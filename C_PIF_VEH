@@ -1,0 +1,1132 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Jun  5 08:07:58 2020
+
+@author: ANDREA.SHEN
+"""
+import pandas as pd
+import numpy as np
+import tempfile
+import shutil
+#import re
+#from pandas.api.types import is_numeric_dtype
+from time import time
+
+#####################################################
+############  PIF_VEH_01 - Import & Merge ###########
+#####################################################
+
+"""Patch from https://stackoverflow.com/questions/21799210/python-copy-larger-file-too-slow / Commented that shutil should be updated slightly with Python 3.8+"""
+def _copyfileobj_patched(fsrc, fdst, length=16*1024*1024):
+    """Patches shutil method to hugely improve copy speed"""
+    while 1:
+        buf = fsrc.read(length)
+        if not buf:
+            break
+        fdst.write(buf)
+shutil.copyfileobj = _copyfileobj_patched
+
+def pif_veh_main(cls_run):
+    temp_filepath = tempfile.gettempdir() + '/temp.csv'
+    rsltpif_dir = cls_run.main_dir+'/results/PIF'
+    datapif_dir = cls_run.main_dir+'/data/PIF'
+    ref_dir = cls_run.main_dir+'/python/aob_tool_reports/ref_tbl'
+    out_dir = cls_run.main_dir+'/reports_inputs'
+    
+    FLD_KP=pd.read_csv(ref_dir + "/FIELDS_KP.csv")
+    COV=pd.read_csv(ref_dir + "/COV.csv")
+    OB_ONEWAY_FLD=pd.read_csv(ref_dir + "/OB_ONEWAY_FIELDS.csv")
+    
+    # PLCY DATA
+    PIF_DATA_PLCY = pd.read_csv(datapif_dir + '/PIF_plcy'+cls_run.suffix_product+'.csv', usecols = list(FLD_KP.loc[FLD_KP['TABLE']=='PIF_DATA_PLCY','FIELD']))
+    
+    FLD=FLD_KP[FLD_KP.TABLE == 'PIF_ONLVL_PLCY'] #Street use Onlvl fields
+    temp_usecols = list(FLD['FIELD'])+list(['cap_fctr'])
+    PIF_STREET_PLCY = pd.read_csv(rsltpif_dir + '/'+cls_run.state_abbr+'_PIF_Street_plcy'+cls_run.suffix_product+'.csv', usecols = temp_usecols)
+    PIF_STREET_PLCY = PIF_STREET_PLCY.add_prefix('str_')
+    PIF_ONLVL_PLCY = pd.read_csv(rsltpif_dir + '/'+cls_run.state_abbr+'_PIF_OnLevel_plcy'+cls_run.suffix_product+'.csv', usecols = temp_usecols)
+    PIF_ONLVL_PLCY = PIF_ONLVL_PLCY.add_prefix('lev_')
+    
+    PIF_PROPOSED_PLCY = pd.read_csv(rsltpif_dir + '/'+cls_run.state_abbr+'_PIF_Proposed_plcy'+cls_run.suffix_product+'.csv', usecols = list(FLD_KP.loc[FLD_KP['TABLE']=='PIF_PROPOSED_PLCY','FIELD']))
+    PIF_PROPOSED_PLCY = PIF_PROPOSED_PLCY.add_prefix('pro_')
+    
+    PIF_UNWIND_PLCY = pd.read_csv(rsltpif_dir + '/'+cls_run.state_abbr+'_PIF_Unwind_plcy'+cls_run.suffix_product+'.csv', usecols = ['src_hh_num','plcy_cntrct_num','cap_fctr'])
+    PIF_UNWIND_PLCY = PIF_UNWIND_PLCY.add_prefix('unw_')
+        
+    # MERGE PLCY DATA
+    plcymrg_temp01 \
+            = pd.merge(PIF_DATA_PLCY, PIF_STREET_PLCY,
+                 left_on = ['SRC_HH_NUM','PLCY_CNTRCT_NUM'], right_on = ['str_src_hh_num','str_plcy_cntrct_num'], how = 'inner')
+    plcymrg_temp01 \
+            = pd.merge(plcymrg_temp01, PIF_ONLVL_PLCY,
+                 left_on = ['SRC_HH_NUM','PLCY_CNTRCT_NUM'], right_on = ['lev_src_hh_num','lev_plcy_cntrct_num'], how = 'inner')
+    plcymrg_temp01 \
+            = pd.merge(plcymrg_temp01, PIF_UNWIND_PLCY,
+                 left_on = ['SRC_HH_NUM','PLCY_CNTRCT_NUM'], right_on = ['unw_src_hh_num','unw_plcy_cntrct_num'], how = 'inner')
+    plcymrg_temp01 \
+            = pd.merge(plcymrg_temp01, PIF_PROPOSED_PLCY,
+                 left_on = ['SRC_HH_NUM','PLCY_CNTRCT_NUM'], right_on = ['pro_src_hh_num','pro_plcy_cntrct_num'], how = 'inner') 
+   
+    ## VEH DATA
+    FLD=FLD_KP[FLD_KP.TABLE == 'PIF_DATA_VEH']
+    temp_usecols = list(FLD['FIELD'])+list(['VEH_IN_PLCY_IND'])
+    PIF_DATA_VEH = pd.read_csv(datapif_dir + '/PIF_veh'+cls_run.suffix_product+'.csv', usecols=temp_usecols)
+    PIF_DATA_VEH = PIF_DATA_VEH[PIF_DATA_VEH['VEH_IN_PLCY_IND'] == 'Y']
+    del PIF_DATA_VEH['VEH_IN_PLCY_IND']
+    
+    PIF_STREET_VEH = pd.read_csv(rsltpif_dir + '/'+cls_run.state_abbr+'_PIF_Street_veh'+cls_run.suffix_product+'.csv')
+    PIF_ONLVL_VEH = pd.read_csv(rsltpif_dir + '/'+cls_run.state_abbr+'_PIF_Onlevel_veh'+cls_run.suffix_product+'.csv')
+    PIF_UNWIND_VEH = pd.read_csv(rsltpif_dir + '/'+cls_run.state_abbr+'_PIF_Unwind_veh'+cls_run.suffix_product+'.csv')
+    PIF_PROPOSED_VEH = pd.read_csv(rsltpif_dir + '/'+cls_run.state_abbr+'_PIF_Proposed_veh'+cls_run.suffix_product+'.csv')
+    
+    #    ## VEH STREET
+    vehcol_cap_prem = [col for col in PIF_STREET_VEH if col.startswith('cap_prem_')]
+    vehcol_uncap_prem = [col for col in PIF_STREET_VEH if col.startswith('uncap_prem_')]
+    vehcol_tech_price = [col for col in PIF_STREET_VEH if col.startswith('tech_price_')]
+    
+    FLD=FLD_KP[FLD_KP.TABLE == 'PIF_ONLVL_VEH'] #Street use Onlvl fields
+    PIF_STREET_VEH =PIF_STREET_VEH[list(FLD['FIELD'])+vehcol_cap_prem+vehcol_uncap_prem+vehcol_tech_price]
+    PIF_STREET_VEH = PIF_STREET_VEH.add_prefix('str_')
+    
+    ## VEH ONLVL
+    vehcol_cap_prem = [col for col in PIF_ONLVL_VEH if col.startswith('cap_prem_')]
+    vehcol_uncap_prem = [col for col in PIF_ONLVL_VEH if col.startswith('uncap_prem_')]
+    vehcol_tech_price = [col for col in PIF_ONLVL_VEH if col.startswith('tech_price_')]
+    
+    FLD=FLD_KP[FLD_KP.TABLE == 'PIF_ONLVL_VEH'] #ONLVL use Onlvl fields
+    PIF_ONLVL_VEH =PIF_ONLVL_VEH[list(FLD['FIELD'])+vehcol_cap_prem+vehcol_uncap_prem+vehcol_tech_price]
+    PIF_ONLVL_VEH = PIF_ONLVL_VEH.add_prefix('lev_')
+    
+    ## VEH UNWIND
+    vehcol_cap_prem = [col for col in PIF_UNWIND_VEH if col.startswith('cap_prem_')]
+    vehcol_uncap_prem = [col for col in PIF_UNWIND_VEH if col.startswith('uncap_prem_')]
+    vehcol_tech_price = [col for col in PIF_UNWIND_VEH if col.startswith('tech_price_')]
+    
+    FLD=FLD_KP[FLD_KP.TABLE == 'PIF_ONLVL_VEH'] #UNWIND use Onlvl fields
+    PIF_UNWIND_VEH =PIF_UNWIND_VEH[list(FLD['FIELD'])+vehcol_cap_prem+vehcol_uncap_prem+vehcol_tech_price]
+    PIF_UNWIND_VEH = PIF_UNWIND_VEH.add_prefix('unw_')
+    
+    ## VEH PROPOSED
+    vehcol_cap_prem = [col for col in PIF_PROPOSED_VEH if col.startswith('cap_prem_')]
+    vehcol_uncap_prem = [col for col in PIF_PROPOSED_VEH if col.startswith('uncap_prem_')]
+    vehcol_tech_price = [col for col in PIF_PROPOSED_VEH if col.startswith('tech_price_')]
+    
+    FLD=FLD_KP[FLD_KP.TABLE == 'PIF_PROPOSED_VEH'] #PROPOSED use PROPOSED fields
+    PIF_PROPOSED_VEH =PIF_PROPOSED_VEH[list(FLD['FIELD'])+vehcol_cap_prem+vehcol_uncap_prem+vehcol_tech_price]
+    PIF_PROPOSED_VEH = PIF_PROPOSED_VEH.add_prefix('pro_')
+    
+    ## MERGE VEH DATA
+    
+    vehmrg_temp01 \
+            = pd.merge(PIF_DATA_VEH,
+                 PIF_STREET_VEH,
+                 left_on = ['SRC_HH_NUM','PLCY_CNTRCT_NUM','SOI_ID'],
+                 right_on = ['str_src_hh_num','str_plcy_cntrct_num','str_soi_id'],
+                 how = 'inner')
+        
+    vehmrg_temp01 \
+            = pd.merge(vehmrg_temp01,
+                 PIF_ONLVL_VEH,
+                 left_on = ['SRC_HH_NUM','PLCY_CNTRCT_NUM','SOI_ID'],
+                 right_on = ['lev_src_hh_num','lev_plcy_cntrct_num','lev_soi_id'],
+                 how = 'inner')
+    vehmrg_temp01 \
+            = pd.merge(vehmrg_temp01,
+                 PIF_UNWIND_VEH,
+                 left_on = ['SRC_HH_NUM','PLCY_CNTRCT_NUM','SOI_ID'],
+                 right_on = ['unw_src_hh_num','unw_plcy_cntrct_num','unw_soi_id'],
+                 how = 'inner')
+    vehmrg_temp01 \
+            = pd.merge(vehmrg_temp01,
+                 PIF_PROPOSED_VEH,
+                 left_on = ['SRC_HH_NUM','PLCY_CNTRCT_NUM','SOI_ID'],
+                 right_on = ['pro_src_hh_num','pro_plcy_cntrct_num','pro_soi_id'],
+                 how = 'inner')
+    
+    ## MERGE PLCY VEH DATA
+    allmrg_temp01 \
+            = pd.merge(plcymrg_temp01,
+                 vehmrg_temp01,
+                 left_on = ['SRC_HH_NUM','PLCY_CNTRCT_NUM'],
+                 right_on = ['SRC_HH_NUM','PLCY_CNTRCT_NUM'],
+                 how = 'inner')
+    del plcymrg_temp01
+    del vehmrg_temp01
+    
+    #######################################################
+    ###########  PIF_VEH_02 - DATA_DUMP_VEH_PIF ###########
+    #######################################################
+    
+    ## BLENDING
+    cov_liab=COV[(COV.COV_TYP == 'LIAB')].COV.tolist()
+    cov_physdam=COV[(COV.COV_TYP == 'PHYSDAM')].COV.tolist()
+    cov_total=COV.COV.tolist()
+    
+    ## BOOK PIF_CAP
+    capvehcol_str_prem = [col for col in allmrg_temp01 if col.startswith('str_cap_prem_') & ~col.startswith('str_cap_prem_aged_')]
+    capvehcol_str_prem2=capvehcol_str_prem+['str_cap_prem_LIAB','str_cap_prem_PHYSDAM','str_cap_prem_TOTAL']
+    
+    capvehcol_pro_aged_prem = [col for col in allmrg_temp01 if col.startswith('pro_cap_prem_aged_')]
+    capvehcol_pro_aged_prem2=capvehcol_pro_aged_prem+['pro_cap_prem_aged_LIAB','pro_cap_prem_aged_PHYSDAM','pro_cap_prem_aged_TOTAL']
+
+    capvehcol_lev_prem = [col for col in allmrg_temp01 if col.startswith('lev_cap_prem_') & ~col.startswith('lev_cap_prem_aged_')]
+    capvehcol_lev_prem2=capvehcol_lev_prem+['lev_cap_prem_LIAB','lev_cap_prem_PHYSDAM','lev_cap_prem_TOTAL']
+    
+    capvehcol_unw_prem = [col for col in allmrg_temp01 if col.startswith('unw_cap_prem_') & ~col.startswith('unw_cap_prem_aged_')]
+    capvehcol_unw_prem2=capvehcol_unw_prem+['unw_cap_prem_LIAB','unw_cap_prem_PHYSDAM','unw_cap_prem_TOTAL']
+
+    capvehcol_pro_prem = [col for col in allmrg_temp01 if col.startswith('pro_cap_prem_') & ~col.startswith('pro_cap_prem_aged_')]
+    capvehcol_pro_prem2=capvehcol_pro_prem+['pro_cap_prem_LIAB','pro_cap_prem_PHYSDAM','pro_cap_prem_TOTAL'] 
+    
+    ## BOOK PIF_UNCAP
+    uncapvehcol_str_prem = [col for col in allmrg_temp01 if col.startswith('str_uncap_prem_') & ~col.startswith('str_uncap_prem_aged_')]
+    uncapvehcol_str_prem2=uncapvehcol_str_prem+['str_uncap_prem_LIAB','str_uncap_prem_PHYSDAM','str_uncap_prem_TOTAL']
+    
+    uncapvehcol_pro_aged_prem = [col for col in allmrg_temp01 if col.startswith('pro_uncap_prem_aged_')]
+    uncapvehcol_pro_aged_prem2=uncapvehcol_pro_aged_prem+['pro_uncap_prem_aged_LIAB','pro_uncap_prem_aged_PHYSDAM','pro_uncap_prem_aged_TOTAL']
+    uncapvehcol_pro_aged_prem_liab = [col for col in uncapvehcol_pro_aged_prem if col.replace('pro_uncap_prem_aged_','') in cov_liab]
+    uncapvehcol_pro_aged_prem_physdam = [col for col in uncapvehcol_pro_aged_prem if col.replace('pro_uncap_prem_aged_','') in cov_physdam]
+    
+    uncapvehcol_lev_prem = [col for col in allmrg_temp01 if col.startswith('lev_uncap_prem_') & ~col.startswith('lev_uncap_prem_aged_')]
+    uncapvehcol_lev_prem2=uncapvehcol_lev_prem+['lev_uncap_prem_LIAB','lev_uncap_prem_PHYSDAM','lev_uncap_prem_TOTAL']
+    
+    uncapvehcol_unw_prem = [col for col in allmrg_temp01 if col.startswith('unw_uncap_prem_') & ~col.startswith('unw_uncap_prem_aged_')]
+    uncapvehcol_unw_prem2=uncapvehcol_unw_prem+['unw_uncap_prem_LIAB','unw_uncap_prem_PHYSDAM','unw_uncap_prem_TOTAL']
+    
+    uncapvehcol_pro_prem = [col for col in allmrg_temp01 if col.startswith('pro_uncap_prem_') & ~col.startswith('pro_uncap_prem_aged_')]
+    uncapvehcol_pro_prem2=uncapvehcol_pro_prem+['pro_uncap_prem_LIAB','pro_uncap_prem_PHYSDAM','pro_uncap_prem_TOTAL']
+    
+    ## BOOK NB_UNCAP
+    # To be consistent with SAS program, add all premium impacts for NB
+    uncapvehnbcol_str_prem = [col for col in allmrg_temp01 if col.startswith('str_tech_price_') & ~col.startswith('str_tech_price_aged_') & ~col.endswith('_aged_min')]
+    uncapvehnbcol_str_prem2=uncapvehnbcol_str_prem+['str_tech_price_LIAB','str_tech_price_PHYSDAM','str_tech_price_TOTAL']
+    uncapvehnbcol_str_prem_liab = [col for col in uncapvehnbcol_str_prem if col.replace('str_tech_price_','') in cov_liab]
+    uncapvehnbcol_str_prem_physdam = [col for col in uncapvehnbcol_str_prem if col.replace('str_tech_price_','') in cov_physdam]
+    
+    uncapvehnbcol_lev_prem = [col for col in allmrg_temp01 if col.startswith('lev_tech_price_') & ~col.startswith('lev_tech_price_aged_') & ~col.endswith('_aged_min')]
+    uncapvehnbcol_lev_prem2=uncapvehnbcol_lev_prem+['lev_tech_price_LIAB','lev_tech_price_PHYSDAM','lev_tech_price_TOTAL']
+    uncapvehnbcol_lev_prem_liab = [col for col in uncapvehnbcol_lev_prem if col.replace('lev_tech_price_','') in cov_liab]
+    uncapvehnbcol_lev_prem_physdam = [col for col in uncapvehnbcol_lev_prem if col.replace('lev_tech_price_','') in cov_physdam]
+    
+    uncapvehnbcol_unw_prem = [col for col in allmrg_temp01 if col.startswith('unw_tech_price_') & ~col.startswith('unw_tech_price_aged_') & ~col.endswith('_aged_min')]
+    uncapvehnbcol_unw_prem2=uncapvehnbcol_unw_prem+['unw_tech_price_LIAB','unw_tech_price_PHYSDAM','unw_tech_price_TOTAL']
+    uncapvehnbcol_unw_prem_liab = [col for col in uncapvehnbcol_unw_prem if col.replace('unw_tech_price_','') in cov_liab]
+    uncapvehnbcol_unw_prem_physdam = [col for col in uncapvehnbcol_unw_prem if col.replace('unw_tech_price_','') in cov_physdam]
+    
+    uncapvehnbcol_pro_prem = [col for col in allmrg_temp01 if col.startswith('pro_tech_price_') & ~col.startswith('pro_tech_price_aged_') & ~col.endswith('_aged_min')]
+    uncapvehnbcol_pro_prem2=uncapvehnbcol_pro_prem+['pro_tech_price_LIAB','pro_tech_price_PHYSDAM','pro_tech_price_TOTAL']
+    uncapvehnbcol_pro_prem_liab = [col for col in uncapvehnbcol_pro_prem if col.replace('pro_tech_price_','') in cov_liab]
+    uncapvehnbcol_pro_prem_physdam = [col for col in uncapvehnbcol_pro_prem if col.replace('pro_tech_price_','') in cov_physdam]
+    
+    uncapvehnbcol_pro_aged_prem = uncapvehnbcol_pro_prem
+    uncapvehnbcol_pro_aged_prem2 = uncapvehnbcol_pro_prem2
+    
+    allmrg_temp01['pro_cap_prem_aged_LIAB'] = allmrg_temp01[[col for col in capvehcol_pro_aged_prem if col.replace('pro_cap_prem_aged_','') in cov_liab]].sum(axis=1)
+    allmrg_temp01['pro_cap_prem_aged_PHYSDAM'] = allmrg_temp01[[col for col in capvehcol_pro_aged_prem if col.replace('pro_cap_prem_aged_','') in cov_physdam]].sum(axis=1)
+    allmrg_temp01['pro_cap_prem_aged_TOTAL'] = allmrg_temp01[capvehcol_pro_aged_prem].sum(axis=1)
+    
+    loop_sum = ['str_cap_prem_','lev_cap_prem_','unw_cap_prem_','pro_cap_prem_']
+    for col_subset in loop_sum:
+        subset_temp = [col for col in allmrg_temp01 if col.startswith('{}'.format(col_subset)) & ~col.startswith('{}aged_'.format(col_subset))]
+        allmrg_temp01['{}LIAB'.format(col_subset)] = allmrg_temp01[[col for col in subset_temp if col.replace('{}'.format(col_subset),'') in cov_liab]].sum(axis=1)
+        allmrg_temp01['{}PHYSDAM'.format(col_subset)] = allmrg_temp01[[col for col in subset_temp if col.replace('{}'.format(col_subset),'') in cov_physdam]].sum(axis=1)
+        allmrg_temp01['{}TOTAL'.format(col_subset)] = allmrg_temp01['{}LIAB'.format(col_subset)] + allmrg_temp01['{}PHYSDAM'.format(col_subset)]
+        if col_subset == 'pro_cap_prem_':
+            cov_list_st = [i[-len(i)+13:] for i in subset_temp]
+    
+    ## BOOK PIF_UNCAP
+    loop_sum = ['str_uncap_prem_','lev_uncap_prem_','unw_uncap_prem_','pro_uncap_prem_']
+    for col_subset in loop_sum:
+        subset_temp = [col for col in allmrg_temp01 if col.startswith('{}'.format(col_subset)) & ~col.startswith('{}aged_'.format(col_subset))]
+        allmrg_temp01['{}LIAB'.format(col_subset)] = allmrg_temp01[[col for col in subset_temp if col.replace('{}'.format(col_subset),'') in cov_liab]].sum(axis=1)
+        allmrg_temp01['{}PHYSDAM'.format(col_subset)] = allmrg_temp01[[col for col in subset_temp if col.replace('{}'.format(col_subset),'') in cov_physdam]].sum(axis=1)
+        allmrg_temp01['{}TOTAL'.format(col_subset)] = allmrg_temp01['{}LIAB'.format(col_subset)] + allmrg_temp01['{}PHYSDAM'.format(col_subset)]
+        
+    allmrg_temp01['pro_uncap_prem_aged_LIAB'] = allmrg_temp01[uncapvehcol_pro_aged_prem_liab].sum(axis=1)
+    allmrg_temp01['pro_uncap_prem_aged_PHYSDAM'] = allmrg_temp01[uncapvehcol_pro_aged_prem_physdam].sum(axis=1)
+    allmrg_temp01['pro_uncap_prem_aged_TOTAL'] = allmrg_temp01[uncapvehcol_pro_aged_prem].sum(axis=1)
+        
+    ## BOOK NB_UNCAP
+    ## No RLAF Factor Applied Here. Assume mod RE can handle this in RE
+    allmrg_temp01['str_tech_price_LIAB'] = allmrg_temp01[uncapvehnbcol_str_prem_liab].sum(axis=1)
+    allmrg_temp01['str_tech_price_PHYSDAM'] = allmrg_temp01[uncapvehnbcol_str_prem_physdam].sum(axis=1)
+    allmrg_temp01['str_tech_price_TOTAL'] = allmrg_temp01[uncapvehnbcol_str_prem].sum(axis=1)
+    
+    allmrg_temp01['lev_tech_price_LIAB'] = allmrg_temp01[uncapvehnbcol_lev_prem_liab].sum(axis=1)
+    allmrg_temp01['lev_tech_price_PHYSDAM'] = allmrg_temp01[uncapvehnbcol_lev_prem_physdam].sum(axis=1)
+    allmrg_temp01['lev_tech_price_TOTAL'] = allmrg_temp01[uncapvehnbcol_lev_prem].sum(axis=1)
+    
+    allmrg_temp01['unw_tech_price_LIAB'] = allmrg_temp01[uncapvehnbcol_unw_prem_liab].sum(axis=1)
+    allmrg_temp01['unw_tech_price_PHYSDAM'] = allmrg_temp01[uncapvehnbcol_unw_prem_physdam].sum(axis=1)
+    allmrg_temp01['unw_tech_price_TOTAL'] = allmrg_temp01[uncapvehnbcol_unw_prem].sum(axis=1)
+    
+    allmrg_temp01['pro_tech_price_LIAB'] = allmrg_temp01[uncapvehnbcol_pro_prem_liab].sum(axis=1)
+    allmrg_temp01['pro_tech_price_PHYSDAM'] = allmrg_temp01[uncapvehnbcol_pro_prem_physdam].sum(axis=1)
+    allmrg_temp01['pro_tech_price_TOTAL'] = allmrg_temp01[uncapvehnbcol_pro_prem].sum(axis=1)
+      
+    allmrg_temp01.to_csv(temp_filepath,index=False)
+    shutil.move(temp_filepath, out_dir+'/DATA_DUMP_VEH_PIF'+cls_run.suffix_product+'.csv')
+    
+    # min max Street number at policy number level
+    minmaxtemp00 = allmrg_temp01.groupby(['PLCY_CNTRCT_NUM'])[['pro_cap_prem_aged_TOTAL','str_cap_prem_TOTAL']].sum()
+    minmaxtemp00['Street_Impact']=minmaxtemp00['pro_cap_prem_aged_TOTAL']/minmaxtemp00['str_cap_prem_TOTAL']-1
+    minmaxstrout=minmaxtemp00[minmaxtemp00['Street_Impact'] == minmaxtemp00['Street_Impact'].min()]
+    minmaxstrout=minmaxstrout.append(minmaxtemp00[minmaxtemp00['Street_Impact'] == minmaxtemp00['Street_Impact'].max()]).reset_index()                   
+    minmaxstrout.to_csv(out_dir+'/MIN_MAX_PLCY'+cls_run.suffix_product+'.csv',index=False)
+    
+    minmax=pd.DataFrame()
+    minmax['Str_Min']=[minmaxstrout.iloc[0]['Street_Impact']]
+    minmax['Str_Max']=[minmaxstrout.iloc[1]['Street_Impact']]
+    minmax.to_csv(out_dir+'/MIN_MAX'+cls_run.suffix_product+'.csv',index=False)
+
+    #################################################
+    ############  PIF_VEH_03 - HH Summary ###########
+    #################################################
+    
+    cov_list_st2=[i for i in cov_list_st]+['LIAB','PHYSDAM','TOTAL']
+    covindcol=['cvg_ind_'+ i for i in cov_list_st]+['cvg_ind_LIAB','cvg_ind_PHYSDAM','cvg_ind_TOTAL']
+    for i in range(len(covindcol)):
+        veh_pro_prem_pos = allmrg_temp01[capvehcol_pro_prem2[i]]>0
+        veh_pro_prem_neg = allmrg_temp01[capvehcol_pro_prem2[i]]<=0
+        allmrg_temp01.loc[veh_pro_prem_pos, covindcol[i]] = 1
+        allmrg_temp01.loc[veh_pro_prem_neg, covindcol[i]] = 0
+        
+    # Household-level tables (only with premium fields for disruption and win rates)
+    # Policies in Force (PIF) capped;
+    PIF_CAP_HH = allmrg_temp01.groupby(['SRC_HH_NUM','pro_mkt_tier_calc'], as_index=False)[covindcol+capvehcol_pro_aged_prem2+capvehcol_str_prem2+\
+    capvehcol_lev_prem2+capvehcol_unw_prem2+capvehcol_pro_prem2].sum()
+    
+    ## Policies in Force (PIF) uncapped;
+    PIF_UNCAP_HH = allmrg_temp01.groupby(['SRC_HH_NUM','pro_mkt_tier_calc'], as_index=False)[covindcol+uncapvehcol_pro_aged_prem2+uncapvehcol_str_prem2+\
+    uncapvehcol_lev_prem2+uncapvehcol_unw_prem2+uncapvehcol_pro_prem2].sum()
+    
+    ## New Business (NB) uncapped;
+    allmrgnb_temp01 = pd.DataFrame(allmrg_temp01[(allmrg_temp01.NBRN_TYP == 'NBNH')])
+    
+    # aged is the same as pro_prem
+    NB_UNCAP_HH = allmrgnb_temp01.groupby(['SRC_HH_NUM','pro_mkt_tier_calc'], as_index=False)[uncapvehnbcol_str_prem2+\
+    uncapvehnbcol_lev_prem2+uncapvehnbcol_unw_prem2+uncapvehnbcol_pro_prem2].sum()
+    
+    obactcol=['OB_ACT_'+ i for i in cov_list_st2]
+    winactcol=['WIN_ACT_'+ i for i in cov_list_st2]
+    obbascol=['OB_BAS_'+ i for i in cov_list_st2]
+    obunwcol=['OB_UNW_'+ i for i in cov_list_st2]
+    obstrcol=['OB_STR_'+ i for i in cov_list_st2]
+    winstrcol=['WIN_STR_'+ i for i in cov_list_st2]
+    
+    winact_hhrt_col=['ACT_HHWINRT_'+ i for i in cov_list_st2]
+    winstr_hhrt_col=['STR_HHWINRT_'+ i for i in cov_list_st2]
+    numhh_col=['HH_NUM_'+ i for i in cov_list_st2]
+    
+    str_hhavgprem_col=['STR_HHAVGPREM_'+ i for i in cov_list_st2]
+    lev_hhavgprem_col=['LEV_HHAVGPREM_'+ i for i in cov_list_st2]
+    pro_hhavgprem_col=['PRO_HHAVGPREM_'+ i for i in cov_list_st2]
+    
+    for i in range(len(cov_list_st2)):
+        cap_lev_veh_mask = PIF_CAP_HH[capvehcol_lev_prem2[i]]>0
+        cap_pro_veh_mask = PIF_CAP_HH[capvehcol_pro_prem2[i]]>0
+        cap_unw_veh_mask = PIF_CAP_HH[capvehcol_unw_prem2[i]]>0 
+        cap_str_veh_mask = PIF_CAP_HH[capvehcol_str_prem2[i]]>0
+        cap_pro_aged_veh_mask = PIF_CAP_HH[capvehcol_pro_aged_prem2[i]]>0
+        PIF_CAP_HH.loc[cap_lev_veh_mask & cap_pro_veh_mask, obactcol[i]] = round(PIF_CAP_HH[capvehcol_pro_prem2[i]]/PIF_CAP_HH[capvehcol_lev_prem2[i]]-1,4)
+        PIF_CAP_HH.loc[~cap_lev_veh_mask, obactcol[i]] = np.nan
+        PIF_CAP_HH.loc[~cap_pro_veh_mask, obactcol[i]] = np.nan              
+        temp_veh_mask = round(PIF_CAP_HH[capvehcol_pro_prem2[i]],1)<=round(PIF_CAP_HH[capvehcol_lev_prem2[i]],1)    
+        PIF_CAP_HH.loc[temp_veh_mask & cap_lev_veh_mask & cap_pro_veh_mask, winactcol[i]] = 1
+        PIF_CAP_HH.loc[~temp_veh_mask, winactcol[i]] = 0
+        PIF_CAP_HH.loc[~cap_lev_veh_mask, winactcol[i]] = 0
+        PIF_CAP_HH.loc[~cap_pro_veh_mask, winactcol[i]] = 0
+        PIF_CAP_HH.loc[cap_unw_veh_mask & cap_pro_veh_mask, obbascol[i]] = round(PIF_CAP_HH[capvehcol_pro_prem2[i]]/PIF_CAP_HH[capvehcol_unw_prem2[i]]-1,4)
+        PIF_CAP_HH.loc[~cap_unw_veh_mask, obbascol[i]] = np.nan
+        PIF_CAP_HH.loc[~cap_pro_veh_mask, obbascol[i]] = np.nan              
+        PIF_CAP_HH.loc[cap_lev_veh_mask & cap_unw_veh_mask, obunwcol[i]] = round(PIF_CAP_HH[capvehcol_unw_prem2[i]]/PIF_CAP_HH[capvehcol_lev_prem2[i]]-1,4)
+        PIF_CAP_HH.loc[~cap_lev_veh_mask, obunwcol[i]] = np.nan
+        PIF_CAP_HH.loc[~cap_unw_veh_mask, obunwcol[i]] = np.nan             
+        PIF_CAP_HH.loc[cap_pro_aged_veh_mask & cap_str_veh_mask, obstrcol[i]] = round(PIF_CAP_HH[capvehcol_pro_aged_prem2[i]]/PIF_CAP_HH[capvehcol_str_prem2[i]]-1,4)
+        PIF_CAP_HH.loc[~cap_pro_aged_veh_mask, obstrcol[i]] = np.nan
+        PIF_CAP_HH.loc[~cap_str_veh_mask, obstrcol[i]] = np.nan
+        temp_veh_mask = round(PIF_CAP_HH[capvehcol_pro_aged_prem2[i]],1)<=round(PIF_CAP_HH[capvehcol_str_prem2[i]],1) 
+        PIF_CAP_HH.loc[temp_veh_mask & cap_pro_aged_veh_mask & cap_str_veh_mask, winstrcol[i]] = 1
+        PIF_CAP_HH.loc[~temp_veh_mask, winstrcol[i]] = 0
+        PIF_CAP_HH.loc[~cap_pro_aged_veh_mask, winstrcol[i]] = 0
+        PIF_CAP_HH.loc[~cap_str_veh_mask, winstrcol[i]] = 0
+        PIF_CAP_HH.loc[cap_pro_veh_mask, covindcol[i]] = 1
+        PIF_CAP_HH.loc[~cap_pro_veh_mask, covindcol[i]] = 0
+    
+    for i in range(len(cov_list_st2)):
+        uncap_lev_veh_mask = PIF_UNCAP_HH[uncapvehcol_lev_prem2[i]]>0
+        uncap_pro_veh_mask = PIF_UNCAP_HH[uncapvehcol_pro_prem2[i]]>0
+        uncap_unw_veh_mask = PIF_UNCAP_HH[uncapvehcol_unw_prem2[i]]>0 
+        uncap_str_veh_mask = PIF_UNCAP_HH[uncapvehcol_str_prem2[i]]>0
+        uncap_pro_aged_veh_mask = PIF_UNCAP_HH[uncapvehcol_pro_aged_prem2[i]]>0
+        PIF_UNCAP_HH.loc[uncap_lev_veh_mask & uncap_pro_veh_mask, obactcol[i]] = round(PIF_UNCAP_HH[uncapvehcol_pro_prem2[i]]/PIF_UNCAP_HH[uncapvehcol_lev_prem2[i]]-1,4)
+        PIF_UNCAP_HH.loc[~uncap_lev_veh_mask, obactcol[i]] = np.nan
+        PIF_UNCAP_HH.loc[~uncap_pro_veh_mask, obactcol[i]] = np.nan              
+        temp_veh_mask = round(PIF_UNCAP_HH[uncapvehcol_pro_prem2[i]],1)<=round(PIF_UNCAP_HH[uncapvehcol_lev_prem2[i]],1)    
+        PIF_UNCAP_HH.loc[temp_veh_mask & uncap_lev_veh_mask & uncap_pro_veh_mask, winactcol[i]] = 1
+        PIF_UNCAP_HH.loc[~temp_veh_mask, winactcol[i]] = 0
+        PIF_UNCAP_HH.loc[~uncap_lev_veh_mask, winactcol[i]] = 0
+        PIF_UNCAP_HH.loc[~uncap_pro_veh_mask, winactcol[i]] = 0
+        PIF_UNCAP_HH.loc[uncap_unw_veh_mask & uncap_pro_veh_mask, obbascol[i]] = round(PIF_UNCAP_HH[uncapvehcol_pro_prem2[i]]/PIF_UNCAP_HH[uncapvehcol_unw_prem2[i]]-1,4)
+        PIF_UNCAP_HH.loc[~uncap_unw_veh_mask, obbascol[i]] = np.nan
+        PIF_UNCAP_HH.loc[~uncap_pro_veh_mask, obbascol[i]] = np.nan              
+        PIF_UNCAP_HH.loc[uncap_lev_veh_mask & uncap_unw_veh_mask, obunwcol[i]] = round(PIF_UNCAP_HH[uncapvehcol_unw_prem2[i]]/PIF_UNCAP_HH[uncapvehcol_lev_prem2[i]]-1,4)
+        PIF_UNCAP_HH.loc[~uncap_lev_veh_mask, obunwcol[i]] = np.nan
+        PIF_UNCAP_HH.loc[~uncap_unw_veh_mask, obunwcol[i]] = np.nan             
+        PIF_UNCAP_HH.loc[uncap_pro_aged_veh_mask & uncap_str_veh_mask, obstrcol[i]] = round(PIF_UNCAP_HH[uncapvehcol_pro_aged_prem2[i]]/PIF_UNCAP_HH[uncapvehcol_str_prem2[i]]-1,4)
+        PIF_UNCAP_HH.loc[~uncap_pro_aged_veh_mask, obstrcol[i]] = np.nan
+        PIF_UNCAP_HH.loc[~uncap_str_veh_mask, obstrcol[i]] = np.nan
+        temp_veh_mask = round(PIF_UNCAP_HH[uncapvehcol_pro_aged_prem2[i]],1)<=round(PIF_UNCAP_HH[uncapvehcol_str_prem2[i]],1) 
+        PIF_UNCAP_HH.loc[temp_veh_mask & uncap_pro_aged_veh_mask & uncap_str_veh_mask, winstrcol[i]] = 1
+        PIF_UNCAP_HH.loc[~temp_veh_mask, winstrcol[i]] = 0
+        PIF_UNCAP_HH.loc[~uncap_pro_aged_veh_mask, winstrcol[i]] = 0
+        PIF_UNCAP_HH.loc[~uncap_str_veh_mask, winstrcol[i]] = 0
+        PIF_UNCAP_HH.loc[uncap_pro_veh_mask, covindcol[i]] = 1
+        PIF_UNCAP_HH.loc[~uncap_pro_veh_mask, covindcol[i]] = 0
+    
+    for i in range(len(cov_list_st2)):
+        NB_lev_veh_mask = NB_UNCAP_HH[uncapvehnbcol_lev_prem2[i]]>0
+        NB_pro_veh_mask = NB_UNCAP_HH[uncapvehnbcol_pro_prem2[i]]>0
+        NB_unw_veh_mask = NB_UNCAP_HH[uncapvehnbcol_unw_prem2[i]]>0 
+        NB_str_veh_mask = NB_UNCAP_HH[uncapvehnbcol_str_prem2[i]]>0
+        NB_UNCAP_HH.loc[NB_lev_veh_mask & NB_pro_veh_mask, obactcol[i]] = round(NB_UNCAP_HH[uncapvehnbcol_pro_prem2[i]]/NB_UNCAP_HH[uncapvehnbcol_lev_prem2[i]]-1,4)
+        NB_UNCAP_HH.loc[~NB_lev_veh_mask, obactcol[i]] = np.nan
+        NB_UNCAP_HH.loc[~NB_pro_veh_mask, obactcol[i]] = np.nan              
+        temp_veh_mask = round(NB_UNCAP_HH[uncapvehnbcol_pro_prem2[i]],1)<=round(NB_UNCAP_HH[uncapvehnbcol_lev_prem2[i]],1)    
+        NB_UNCAP_HH.loc[temp_veh_mask & NB_lev_veh_mask & NB_pro_veh_mask, winactcol[i]] = 1
+        NB_UNCAP_HH.loc[~temp_veh_mask, winactcol[i]] = 0
+        NB_UNCAP_HH.loc[~NB_lev_veh_mask, winactcol[i]] = 0
+        NB_UNCAP_HH.loc[~NB_pro_veh_mask, winactcol[i]] = 0
+        NB_UNCAP_HH.loc[NB_unw_veh_mask & NB_pro_veh_mask, obbascol[i]] = round(NB_UNCAP_HH[uncapvehnbcol_pro_prem2[i]]/NB_UNCAP_HH[uncapvehnbcol_unw_prem2[i]]-1,4)
+        NB_UNCAP_HH.loc[~NB_unw_veh_mask, obbascol[i]] = np.nan
+        NB_UNCAP_HH.loc[~NB_pro_veh_mask, obbascol[i]] = np.nan              
+        NB_UNCAP_HH.loc[NB_lev_veh_mask & NB_unw_veh_mask, obunwcol[i]] = round(NB_UNCAP_HH[uncapvehnbcol_unw_prem2[i]]/NB_UNCAP_HH[uncapvehnbcol_lev_prem2[i]]-1,4)
+        NB_UNCAP_HH.loc[~NB_lev_veh_mask, obunwcol[i]] = np.nan
+        NB_UNCAP_HH.loc[~NB_unw_veh_mask, obunwcol[i]] = np.nan             
+        NB_UNCAP_HH.loc[NB_pro_veh_mask & NB_str_veh_mask, obstrcol[i]] = round(NB_UNCAP_HH[uncapvehnbcol_pro_prem2[i]]/NB_UNCAP_HH[uncapvehnbcol_str_prem2[i]]-1,4)
+        NB_UNCAP_HH.loc[~NB_pro_veh_mask, obstrcol[i]] = np.nan
+        NB_UNCAP_HH.loc[~NB_str_veh_mask, obstrcol[i]] = np.nan     
+        temp_veh_mask = round(NB_UNCAP_HH[uncapvehnbcol_pro_prem2[i]],1)<=round(NB_UNCAP_HH[uncapvehnbcol_str_prem2[i]],1) 
+        NB_UNCAP_HH.loc[temp_veh_mask & NB_pro_veh_mask & NB_str_veh_mask, winstrcol[i]] = 1
+        NB_UNCAP_HH.loc[~temp_veh_mask, winstrcol[i]] = 0
+        NB_UNCAP_HH.loc[~NB_pro_veh_mask, winstrcol[i]] = 0
+        NB_UNCAP_HH.loc[~NB_str_veh_mask, winstrcol[i]] = 0
+        NB_UNCAP_HH.loc[NB_pro_veh_mask, covindcol[i]] = 1
+        NB_UNCAP_HH.loc[~NB_pro_veh_mask, covindcol[i]] = 0
+       
+    #####################################
+    # aggregate 2 - to overall HH level #
+    #####################################
+         
+    PIF_CAP_HH['Book']='PIF_CAPPED'
+    
+    PIF_CAP_HH2 = PIF_CAP_HH.groupby(['Book'], as_index=False)[winactcol+winstrcol+covindcol+capvehcol_str_prem2+\
+    capvehcol_lev_prem2+capvehcol_pro_prem2].sum()
+    ''' Prior testing point '''
+    
+    for i in range(len(cov_list_st2)):
+         PIF_CAP_HH2[winact_hhrt_col[i]] = PIF_CAP_HH2.apply(lambda x: x[winactcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+         PIF_CAP_HH2[winstr_hhrt_col[i]] = PIF_CAP_HH2.apply(lambda x: x[winstrcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+    
+         PIF_CAP_HH2[numhh_col[i]] = PIF_CAP_HH2[covindcol[i]]
+         
+         PIF_CAP_HH2[str_hhavgprem_col[i]]=PIF_CAP_HH2.apply(lambda x: x[capvehcol_str_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         PIF_CAP_HH2[lev_hhavgprem_col[i]]=PIF_CAP_HH2.apply(lambda x: x[capvehcol_lev_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         PIF_CAP_HH2[pro_hhavgprem_col[i]]=PIF_CAP_HH2.apply(lambda x: x[capvehcol_pro_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+    
+    value_vars_list=winact_hhrt_col+winstr_hhrt_col+numhh_col+str_hhavgprem_col+lev_hhavgprem_col+pro_hhavgprem_col
+    
+    PIF_CAP_HH2=pd.melt(PIF_CAP_HH2.reset_index(), id_vars=['Book'], value_vars=value_vars_list,var_name='tempcol')
+    PIF_CAP_HH2['tempcol1']=PIF_CAP_HH2['tempcol'].str.extract(r'([a-zA-Z]+_[a-zA-Z]+)', flags=0, expand=True) 
+    PIF_CAP_HH2['tempcol2']=PIF_CAP_HH2['tempcol'].str.split('_',2).str[-1]
+    
+    PIF_CAP_HH2=PIF_CAP_HH2.pivot_table(index=['Book','tempcol2'],columns = ['tempcol1'], values = 'value',aggfunc=np.sum)
+    
+    PIF_CAP_HH2=PIF_CAP_HH2.rename(columns={'ACT_HHWINRT':'Actuarial_HH_Win_Rate',\
+                                            'HH_NUM':'Number_of_HH',\
+                                            'LEV_HHAVGPREM':'OnLevel_Avg_HH_Premium',\
+                                            'PRO_HHAVGPREM':'Proposed_Avg_HH_Premium',\
+                                            'STR_HHAVGPREM':'Street_Avg_HH_Premium',\
+                                            'STR_HHWINRT':'Street_HH_Win_Rate',\
+                                            })
+        
+    PIF_CAP_HH2.index.names = ['Book', 'Coverage']
+    PIF_CAP_HH2=PIF_CAP_HH2.reset_index()
+    
+    ###
+    
+    PIF_UNCAP_HH['Book']='PIF_UNCAPPED'
+    
+    PIF_UNCAP_HH2 = PIF_UNCAP_HH.groupby(['Book'], as_index=False)[winactcol+winstrcol+covindcol+uncapvehcol_str_prem2+\
+    uncapvehcol_lev_prem2+uncapvehcol_pro_prem2].sum()
+    
+    for i in range(len(cov_list_st2)):
+         PIF_UNCAP_HH2[winact_hhrt_col[i]] = PIF_UNCAP_HH2.apply(lambda x: x[winactcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+         PIF_UNCAP_HH2[winstr_hhrt_col[i]] = PIF_UNCAP_HH2.apply(lambda x: x[winstrcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+    
+         PIF_UNCAP_HH2[numhh_col[i]] = PIF_UNCAP_HH2[covindcol[i]]
+         
+         PIF_UNCAP_HH2[str_hhavgprem_col[i]]=PIF_UNCAP_HH2.apply(lambda x: x[uncapvehcol_str_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         PIF_UNCAP_HH2[lev_hhavgprem_col[i]]=PIF_UNCAP_HH2.apply(lambda x: x[uncapvehcol_lev_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         PIF_UNCAP_HH2[pro_hhavgprem_col[i]]=PIF_UNCAP_HH2.apply(lambda x: x[uncapvehcol_pro_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+    
+    value_vars_list=winact_hhrt_col+winstr_hhrt_col+numhh_col+str_hhavgprem_col+lev_hhavgprem_col+pro_hhavgprem_col
+    
+    PIF_UNCAP_HH2=pd.melt(PIF_UNCAP_HH2.reset_index(), id_vars=['Book'], value_vars=value_vars_list,var_name='tempcol')
+    PIF_UNCAP_HH2['tempcol1']=PIF_UNCAP_HH2['tempcol'].str.extract(r'([a-zA-Z]+_[a-zA-Z]+)', flags=0, expand=True) 
+    PIF_UNCAP_HH2['tempcol2']=PIF_UNCAP_HH2['tempcol'].str.split('_',2).str[-1]
+    
+    PIF_UNCAP_HH2=PIF_UNCAP_HH2.pivot_table(index=['Book','tempcol2'],columns = ['tempcol1'], values = 'value',aggfunc=np.sum)
+    
+    PIF_UNCAP_HH2=PIF_UNCAP_HH2.rename(columns={'ACT_HHWINRT':'Actuarial_HH_Win_Rate',\
+                                                'HH_NUM':'Number_of_HH',\
+                                                'LEV_HHAVGPREM':'OnLevel_Avg_HH_Premium',\
+                                                'PRO_HHAVGPREM':'Proposed_Avg_HH_Premium',\
+                                                'STR_HHAVGPREM':'Street_Avg_HH_Premium',\
+                                                'STR_HHWINRT':'Street_HH_Win_Rate',\
+                                                })
+        
+       
+    PIF_UNCAP_HH2.index.names = ['Book', 'Coverage']
+    PIF_UNCAP_HH2=PIF_UNCAP_HH2.reset_index()
+    
+    ###
+    
+    NB_UNCAP_HH['Book']='NB_UNCAPPED'
+    
+    NB_UNCAP_HH2 = NB_UNCAP_HH.groupby(['Book'], as_index=False)[winactcol+winstrcol+covindcol+uncapvehnbcol_str_prem2+\
+    uncapvehnbcol_lev_prem2+uncapvehnbcol_pro_prem2].sum()
+    
+    for i in range(len(cov_list_st2)):
+         NB_UNCAP_HH2[winact_hhrt_col[i]] = NB_UNCAP_HH2.apply(lambda x: x[winactcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+         NB_UNCAP_HH2[winstr_hhrt_col[i]] = NB_UNCAP_HH2.apply(lambda x: x[winstrcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+    
+         NB_UNCAP_HH2[numhh_col[i]] = NB_UNCAP_HH2[covindcol[i]]
+         
+         NB_UNCAP_HH2[str_hhavgprem_col[i]]=NB_UNCAP_HH2.apply(lambda x: x[uncapvehnbcol_str_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         NB_UNCAP_HH2[lev_hhavgprem_col[i]]=NB_UNCAP_HH2.apply(lambda x: x[uncapvehnbcol_lev_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         NB_UNCAP_HH2[pro_hhavgprem_col[i]]=NB_UNCAP_HH2.apply(lambda x: x[uncapvehnbcol_pro_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+    
+    value_vars_list=winact_hhrt_col+winstr_hhrt_col+numhh_col+str_hhavgprem_col+lev_hhavgprem_col+pro_hhavgprem_col
+    
+    NB_UNCAP_HH2=pd.melt(NB_UNCAP_HH2.reset_index(), id_vars=['Book'], value_vars=value_vars_list,var_name='tempcol')
+    NB_UNCAP_HH2['tempcol1']=NB_UNCAP_HH2['tempcol'].str.extract(r'([a-zA-Z]+_[a-zA-Z]+)', flags=0, expand=True) 
+    NB_UNCAP_HH2['tempcol2']=NB_UNCAP_HH2['tempcol'].str.split('_',2).str[-1]
+    
+    NB_UNCAP_HH2=NB_UNCAP_HH2.pivot_table(index=['Book','tempcol2'],columns = ['tempcol1'], values = 'value',aggfunc=np.sum)
+    
+    NB_UNCAP_HH2=NB_UNCAP_HH2.rename(columns={'ACT_HHWINRT':'Actuarial_HH_Win_Rate',\
+                                              'HH_NUM':'Number_of_HH',\
+                                              'LEV_HHAVGPREM':'OnLevel_Avg_HH_Premium',\
+                                              'PRO_HHAVGPREM':'Proposed_Avg_HH_Premium',\
+                                              'STR_HHAVGPREM':'Street_Avg_HH_Premium',\
+                                              'STR_HHWINRT':'Street_HH_Win_Rate',\
+                                              })
+        
+    NB_UNCAP_HH2.index.names = ['Book', 'Coverage']
+    NB_UNCAP_HH2=NB_UNCAP_HH2.reset_index()
+    NB_UNCAP_HH2.drop(['Street_HH_Win_Rate','Street_Avg_HH_Premium'], axis=1, inplace=True)
+       
+    
+    ###############################################
+    ###############  PIF_VEH_04 - OB ##############
+    ###############################################
+     # new fields
+    winact_rt_col=['ACT_WINRT_'+ i for i in cov_list_st2]
+    winstr_rt_col=['STR_WINRT_'+ i for i in cov_list_st2]
+    
+    vehexp_col=['VEH_EXPMIX_'+ i for i in cov_list_st2]
+    numveh_col=['VEH_NUM_'+ i for i in cov_list_st2]
+    
+    str_ttlprem_col=['STR_TTLPREM_'+ i for i in cov_list_st2]
+    lev_ttlprem_col=['LEV_TTLPREM_'+ i for i in cov_list_st2]
+    pro_ttlprem_col=['PRO_TTLPREM_'+ i for i in cov_list_st2]
+    str_avgprem_col=['STR_AVGPREM_'+ i for i in cov_list_st2]
+    lev_avgprem_col=['LEV_AVGPREM_'+ i for i in cov_list_st2]
+    pro_avgprem_col=['PRO_AVGPREM_'+ i for i in cov_list_st2]
+    
+    
+    ####################################
+    # aggregate - to overall VEH level #
+    ####################################
+    
+    ## PIF_CAPPED
+    temp00=allmrg_temp01
+    
+    for i in range(len(cov_list_st2)):
+        cap_lev_veh_mask = temp00[capvehcol_lev_prem2[i]]>0
+        cap_pro_veh_mask = temp00[capvehcol_pro_prem2[i]]>0
+        cap_str_veh_mask = temp00[capvehcol_str_prem2[i]]>0
+        cap_pro_aged_veh_mask = temp00[capvehcol_pro_aged_prem2[i]]>0
+                                          
+        temp_veh_mask =  round(temp00[capvehcol_pro_prem2[i]],1)<=round(temp00[capvehcol_lev_prem2[i]],1) 
+        temp00.loc[temp_veh_mask & cap_lev_veh_mask & cap_pro_veh_mask, winactcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winactcol[i]] = 0
+        temp00.loc[~cap_lev_veh_mask, winactcol[i]] = 0
+        temp00.loc[~cap_pro_veh_mask, winactcol[i]] = 0 
+                  
+        temp_veh_mask =  round(temp00[capvehcol_pro_aged_prem2[i]],1)<=round(temp00[capvehcol_str_prem2[i]],1)
+        temp00.loc[temp_veh_mask & cap_pro_aged_veh_mask & cap_str_veh_mask, winstrcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~cap_pro_aged_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~cap_str_veh_mask, winstrcol[i]] = 0
+                  
+        temp00.loc[cap_pro_veh_mask, covindcol[i]] = 1
+        temp00.loc[~cap_pro_veh_mask, covindcol[i]] = 0         
+    
+    ## aggregate veh    
+    temp00['Book']='PIF_CAPPED'
+          
+    temp01 = temp00.groupby(['Book'], as_index=False)[winactcol+winstrcol+covindcol+capvehcol_pro_aged_prem2+capvehcol_str_prem2+\
+    capvehcol_lev_prem2+capvehcol_unw_prem2+capvehcol_pro_prem2].sum()
+        
+    
+    for i in range(len(cov_list_st2)):
+         temp01[obactcol[i]] = temp01.apply(lambda x: round(x[capvehcol_pro_prem2[i]]/x[capvehcol_lev_prem2[i]]-1,4) if x[capvehcol_lev_prem2[i]]>0 and x[capvehcol_pro_prem2[i]]>0 else np.nan, axis=1)
+         temp01[obbascol[i]] = temp01.apply(lambda x: round(x[capvehcol_pro_prem2[i]]/x[capvehcol_unw_prem2[i]]-1,4) if x[capvehcol_unw_prem2[i]]>0 and x[capvehcol_pro_prem2[i]]>0 else np.nan, axis=1)
+         temp01[obunwcol[i]] = temp01.apply(lambda x: round(x[capvehcol_unw_prem2[i]]/x[capvehcol_lev_prem2[i]]-1,4) if x[capvehcol_lev_prem2[i]]>0 and x[capvehcol_unw_prem2[i]]>0 else np.nan, axis=1)     
+         temp01[obstrcol[i]] = temp01.apply(lambda x: round(x[capvehcol_pro_aged_prem2[i]]/x[capvehcol_str_prem2[i]]-1,4) if x[capvehcol_pro_aged_prem2[i]]>0 and x[capvehcol_str_prem2[i]]>0 else np.nan, axis=1)  
+     
+         temp01[winact_rt_col[i]] = temp01.apply(lambda x: x[winactcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+         temp01[winstr_rt_col[i]] = temp01.apply(lambda x: x[winstrcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+    
+         temp01[numveh_col[i]] = temp01[covindcol[i]]
+         
+         temp01[str_ttlprem_col[i]]=temp01[capvehcol_str_prem2[i]]
+         temp01[lev_ttlprem_col[i]]=temp01[capvehcol_lev_prem2[i]]
+         temp01[pro_ttlprem_col[i]]=temp01[capvehcol_pro_prem2[i]]
+         temp01[str_avgprem_col[i]]=temp01.apply(lambda x: x[capvehcol_str_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         temp01[lev_avgprem_col[i]]=temp01.apply(lambda x: x[capvehcol_lev_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         temp01[pro_avgprem_col[i]]=temp01.apply(lambda x: x[capvehcol_pro_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+    
+    
+    value_vars_list=obactcol+obbascol+obunwcol+obstrcol+winact_rt_col+winstr_rt_col+numveh_col+str_ttlprem_col+lev_ttlprem_col\
+    +pro_ttlprem_col+str_avgprem_col+lev_avgprem_col+pro_avgprem_col
+  
+    temp02=pd.melt(temp01.reset_index(), id_vars=['Book'], value_vars=value_vars_list,var_name='tempcol')
+    temp02['tempcol1']=temp02['tempcol'].str.extract(r'([a-zA-Z]+_[a-zA-Z]+)', flags=0, expand=True) 
+    temp02['tempcol2']=temp02['tempcol'].str.split('_',2).str[-1]
+    
+    temp03=temp02.pivot_table(index=['Book','tempcol2'],columns = ['tempcol1'], values = 'value',aggfunc=np.sum)
+    
+    temp03=temp03.rename(columns={'ACT_WINRT':'Actuarial_Veh_Win_Rate',\
+                                  'LEV_AVGPREM':'OnLevel_Avg_Veh_Premium',\
+                                  'LEV_TTLPREM':'OnLevel_Total_Premium',\
+                                  'OB_ACT':'Actuarial_Impact',\
+                                  'OB_BAS':'Base_Impact',\
+                                  'OB_STR':'Street_Impact',\
+                                  'OB_UNW':'Unwind_Impact',\
+                                  'PRO_AVGPREM':'Proposed_Avg_Veh_Premium',\
+                                  'PRO_TTLPREM':'Proposed_Total_Premium',\
+                                  'STR_AVGPREM':'Street_Avg_Veh_Premium',\
+                                  'STR_TTLPREM':'Street_Total_Premium',\
+                                  'STR_WINRT':'Street_Veh_Win_Rate',\
+                                  'VEH_NUM':'Number_of_Veh'})
+        
+    temp03.index.names = ['Book', 'Coverage']
+    temp03=temp03.reset_index()
+    
+    OB=temp03.merge(PIF_CAP_HH2, left_on=['Book', 'Coverage'], right_on=['Book', 'Coverage'])
+    
+    ## PIF_UNCAPPED
+    temp00=allmrg_temp01
+    
+    for i in range(len(cov_list_st2)):
+        uncap_lev_veh_mask = temp00[uncapvehcol_lev_prem2[i]]>0
+        uncap_pro_veh_mask = temp00[uncapvehcol_pro_prem2[i]]>0
+        uncap_str_veh_mask = temp00[uncapvehcol_str_prem2[i]]>0
+        uncap_pro_aged_veh_mask = temp00[uncapvehcol_pro_aged_prem2[i]]>0
+                                          
+        temp_veh_mask =  round(temp00[uncapvehcol_pro_prem2[i]],1)<=round(temp00[uncapvehcol_lev_prem2[i]],1) 
+        temp00.loc[temp_veh_mask & uncap_lev_veh_mask & uncap_pro_veh_mask, winactcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winactcol[i]] = 0
+        temp00.loc[~uncap_lev_veh_mask, winactcol[i]] = 0
+        temp00.loc[~uncap_pro_veh_mask, winactcol[i]] = 0 
+                  
+        temp_veh_mask =  round(temp00[uncapvehcol_pro_aged_prem2[i]],1)<=round(temp00[uncapvehcol_str_prem2[i]],1)
+        temp00.loc[temp_veh_mask & uncap_pro_aged_veh_mask & uncap_str_veh_mask, winstrcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~uncap_pro_aged_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~uncap_str_veh_mask, winstrcol[i]] = 0
+                  
+        temp00.loc[uncap_pro_veh_mask, covindcol[i]] = 1
+        temp00.loc[~uncap_pro_veh_mask, covindcol[i]] = 0 
+        
+    ## aggregate veh    
+    temp00['Book']='PIF_UNCAPPED'
+          
+    temp01 = temp00.groupby(['Book'], as_index = False)[winactcol+winstrcol+covindcol+uncapvehcol_pro_aged_prem2+uncapvehcol_str_prem2+\
+    uncapvehcol_lev_prem2+uncapvehcol_unw_prem2+uncapvehcol_pro_prem2].sum()
+        
+    
+    for i in range(len(cov_list_st2)):
+         temp01[obactcol[i]] = temp01.apply(lambda x: round(x[uncapvehcol_pro_prem2[i]]/x[uncapvehcol_lev_prem2[i]]-1,4) if x[uncapvehcol_lev_prem2[i]]>0 and x[uncapvehcol_pro_prem2[i]]>0 else np.nan, axis=1)
+         temp01[obbascol[i]] = temp01.apply(lambda x: round(x[uncapvehcol_pro_prem2[i]]/x[uncapvehcol_unw_prem2[i]]-1,4) if x[uncapvehcol_unw_prem2[i]]>0 and x[uncapvehcol_pro_prem2[i]]>0 else np.nan, axis=1)
+         temp01[obunwcol[i]] = temp01.apply(lambda x: round(x[uncapvehcol_unw_prem2[i]]/x[uncapvehcol_lev_prem2[i]]-1,4) if x[uncapvehcol_lev_prem2[i]]>0 and x[uncapvehcol_unw_prem2[i]]>0 else np.nan, axis=1)     
+         temp01[obstrcol[i]] = temp01.apply(lambda x: round(x[uncapvehcol_pro_aged_prem2[i]]/x[uncapvehcol_str_prem2[i]]-1,4) if x[uncapvehcol_pro_aged_prem2[i]]>0 and x[uncapvehcol_str_prem2[i]]>0 else np.nan, axis=1)  
+     
+         temp01[winact_rt_col[i]] = temp01.apply(lambda x: x[winactcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+         temp01[winstr_rt_col[i]] = temp01.apply(lambda x: x[winstrcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+    
+         temp01[numveh_col[i]] = temp01[covindcol[i]]
+         
+         temp01[str_ttlprem_col[i]]=temp01[uncapvehcol_str_prem2[i]]
+         temp01[lev_ttlprem_col[i]]=temp01[uncapvehcol_lev_prem2[i]]
+         temp01[pro_ttlprem_col[i]]=temp01[uncapvehcol_pro_prem2[i]]
+         temp01[str_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehcol_str_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         temp01[lev_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehcol_lev_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         temp01[pro_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehcol_pro_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         
+    value_vars_list=obactcol+obbascol+obunwcol+obstrcol+winact_rt_col+winstr_rt_col+numveh_col+str_ttlprem_col+lev_ttlprem_col\
+    +pro_ttlprem_col+str_avgprem_col+lev_avgprem_col+pro_avgprem_col
+    
+    temp02=pd.melt(temp01.reset_index(), id_vars=['Book'], value_vars=value_vars_list,var_name='tempcol')
+    temp02['tempcol1']=temp02['tempcol'].str.extract(r'([a-zA-Z]+_[a-zA-Z]+)', flags=0, expand=True) 
+    temp02['tempcol2']=temp02['tempcol'].str.split('_',2).str[-1]
+    
+    temp03=temp02.pivot_table(index=['Book','tempcol2'],columns = ['tempcol1'], values = 'value',aggfunc=np.sum)
+    
+    temp03=temp03.rename(columns={'ACT_WINRT':'Actuarial_Veh_Win_Rate',\
+                                  'LEV_AVGPREM':'OnLevel_Avg_Veh_Premium',\
+                                  'LEV_TTLPREM':'OnLevel_Total_Premium',\
+                                  'OB_ACT':'Actuarial_Impact',\
+                                  'OB_BAS':'Base_Impact',\
+                                  'OB_STR':'Street_Impact',\
+                                  'OB_UNW':'Unwind_Impact',\
+                                  'PRO_AVGPREM':'Proposed_Avg_Veh_Premium',\
+                                  'PRO_TTLPREM':'Proposed_Total_Premium',\
+                                  'STR_AVGPREM':'Street_Avg_Veh_Premium',\
+                                  'STR_TTLPREM':'Street_Total_Premium',\
+                                  'STR_WINRT':'Street_Veh_Win_Rate',\
+                                  'VEH_NUM':'Number_of_Veh'})
+        
+    temp03.index.names = ['Book', 'Coverage']
+    temp03=temp03.reset_index()
+        
+    OB=OB.append(temp03.merge(PIF_UNCAP_HH2, left_on=['Book', 'Coverage'], right_on=['Book', 'Coverage']))
+    
+    ## NB_UNCAPPED
+    temp00=pd.DataFrame(allmrg_temp01[(allmrg_temp01.NBRN_TYP == 'NBNH')])
+    
+    for i in range(len(cov_list_st2)):
+        NB_lev_veh_mask = temp00[uncapvehnbcol_lev_prem2[i]]>0
+        NB_pro_veh_mask = temp00[uncapvehnbcol_pro_prem2[i]]>0
+        NB_str_veh_mask = temp00[uncapvehnbcol_str_prem2[i]]>0
+    #    NB_pro_aged_veh_mask = temp00[uncapvehcol_pro_aged_prem2[i]]>0
+                                          
+        temp_veh_mask =  round(temp00[uncapvehnbcol_pro_prem2[i]],1)<=round(temp00[uncapvehnbcol_lev_prem2[i]],1) 
+        temp00.loc[temp_veh_mask & NB_pro_veh_mask & NB_lev_veh_mask, winactcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winactcol[i]] = 0
+        temp00.loc[~NB_pro_veh_mask, winactcol[i]] = 0
+        temp00.loc[~NB_lev_veh_mask, winactcol[i]] = 0 
+                  
+        temp_veh_mask =  round(temp00[uncapvehnbcol_pro_prem2[i]],1)<=round(temp00[uncapvehnbcol_str_prem2[i]],1)
+        temp00.loc[temp_veh_mask & NB_pro_veh_mask & NB_str_veh_mask, winstrcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~NB_pro_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~NB_str_veh_mask, winstrcol[i]] = 0
+                  
+        temp00.loc[NB_pro_veh_mask, covindcol[i]] = 1
+        temp00.loc[~NB_pro_veh_mask, covindcol[i]] = 0 
+                  
+    ## aggregate veh    
+    temp00['Book']='NB_UNCAPPED'
+              
+    temp01 = temp00.groupby(['Book'], as_index=False)[winactcol+winstrcol+covindcol+uncapvehnbcol_str_prem2+\
+    uncapvehnbcol_lev_prem2+uncapvehnbcol_unw_prem2+uncapvehnbcol_pro_prem2].sum()
+        
+    for i in range(len(cov_list_st2)):
+         temp01[obactcol[i]] = temp01.apply(lambda x: round(x[uncapvehnbcol_pro_prem2[i]]/x[uncapvehnbcol_lev_prem2[i]]-1,4) if x[uncapvehnbcol_lev_prem2[i]]>0 and x[uncapvehnbcol_pro_prem2[i]]>0 else np.nan, axis=1)
+         temp01[obbascol[i]] = temp01.apply(lambda x: round(x[uncapvehnbcol_pro_prem2[i]]/x[uncapvehnbcol_unw_prem2[i]]-1,4) if x[uncapvehnbcol_unw_prem2[i]]>0 and x[uncapvehnbcol_pro_prem2[i]]>0 else np.nan, axis=1)
+         temp01[obunwcol[i]] = temp01.apply(lambda x: round(x[uncapvehnbcol_unw_prem2[i]]/x[uncapvehnbcol_lev_prem2[i]]-1,4) if x[uncapvehnbcol_lev_prem2[i]]>0 and x[uncapvehnbcol_unw_prem2[i]]>0 else np.nan, axis=1)     
+         temp01[obstrcol[i]] = temp01.apply(lambda x: round(x[uncapvehnbcol_pro_aged_prem2[i]]/x[uncapvehnbcol_str_prem2[i]]-1,4) if x[uncapvehnbcol_pro_aged_prem2[i]]>0 and x[uncapvehnbcol_str_prem2[i]]>0 else np.nan, axis=1)  
+     
+         temp01[winact_rt_col[i]] = temp01.apply(lambda x: x[winactcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+         temp01[winstr_rt_col[i]] = temp01.apply(lambda x: x[winstrcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+    
+         temp01[numveh_col[i]] = temp01[covindcol[i]]
+         
+         temp01[str_ttlprem_col[i]]=temp01[uncapvehnbcol_str_prem2[i]]
+         temp01[lev_ttlprem_col[i]]=temp01[uncapvehnbcol_lev_prem2[i]]
+         temp01[pro_ttlprem_col[i]]=temp01[uncapvehnbcol_pro_prem2[i]]
+         temp01[str_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehnbcol_str_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         temp01[lev_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehnbcol_lev_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         temp01[pro_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehnbcol_pro_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+         
+    value_vars_list=obactcol+obbascol+obunwcol+obstrcol+winact_rt_col+winstr_rt_col+numveh_col+str_ttlprem_col+lev_ttlprem_col\
+    +pro_ttlprem_col+str_avgprem_col+lev_avgprem_col+pro_avgprem_col
+    
+    temp02=pd.melt(temp01.reset_index(), id_vars=['Book'], value_vars=value_vars_list,var_name='tempcol')
+    temp02['tempcol1']=temp02['tempcol'].str.extract(r'([a-zA-Z]+_[a-zA-Z]+)', flags=0, expand=True) 
+    temp02['tempcol2']=temp02['tempcol'].str.split('_',2).str[-1]
+    
+    temp03=temp02.pivot_table(index=['Book','tempcol2'],columns = ['tempcol1'], values = 'value',aggfunc=np.sum)
+    
+    temp03=temp03.rename(columns={'ACT_WINRT':'Actuarial_Veh_Win_Rate',\
+                                  'LEV_AVGPREM':'OnLevel_Avg_Veh_Premium',\
+                                  'LEV_TTLPREM':'OnLevel_Total_Premium',\
+                                  'OB_ACT':'Actuarial_Impact',\
+                                  'OB_BAS':'Base_Impact',\
+                                  'OB_STR':'Street_Impact',\
+                                  'OB_UNW':'Unwind_Impact',\
+                                  'PRO_AVGPREM':'Proposed_Avg_Veh_Premium',\
+                                  'PRO_TTLPREM':'Proposed_Total_Premium',\
+                                  'STR_AVGPREM':'Street_Avg_Veh_Premium',\
+                                  'STR_TTLPREM':'Street_Total_Premium',\
+                                  'STR_WINRT':'Street_Veh_Win_Rate',\
+                                  'VEH_NUM':'Number_of_Veh'})
+        
+    temp03.index.names = ['Book', 'Coverage']
+    temp03=temp03.reset_index()
+    temp03.drop(['Street_Impact','Street_Veh_Win_Rate','Street_Total_Premium','Street_Avg_Veh_Premium'], axis=1, inplace=True)
+    
+    OB=OB.append(temp03.merge(NB_UNCAP_HH2, left_on=['Book', 'Coverage'], right_on=['Book', 'Coverage']))
+    
+    #reorder
+    OB=OB[['Book','Coverage','Actuarial_Impact','Base_Impact','Unwind_Impact','Street_Impact',\
+           'Actuarial_Veh_Win_Rate','Street_Veh_Win_Rate','Actuarial_HH_Win_Rate','Street_HH_Win_Rate','Number_of_Veh',\
+           'Number_of_HH', 'Street_Total_Premium',\
+           'OnLevel_Total_Premium','Proposed_Total_Premium','Street_Avg_Veh_Premium','OnLevel_Avg_Veh_Premium','Proposed_Avg_Veh_Premium',\
+           'Street_Avg_HH_Premium','OnLevel_Avg_HH_Premium','Proposed_Avg_HH_Premium']]
+    
+    OB.to_csv(out_dir+'/OB'+cls_run.suffix_product+'.csv',index=False)
+    
+      
+    
+    ###############################################
+    ############  PIF_VEH_05 - OB 1 Way ###########
+    ###############################################
+           
+    allmrg_temp01.loc[(allmrg_temp01['pro_homeowner_ind']=='Y')&(allmrg_temp01['pro_disc_auto_home']=='Y'), 'Homeowner']='Homeowner (Farmers Home)'
+    allmrg_temp01.loc[(allmrg_temp01['pro_homeowner_ind']=='Y')&(allmrg_temp01['pro_disc_auto_home']=='N'), 'Homeowner']='Homeowner (no Farmers Home)'
+    allmrg_temp01.loc[(allmrg_temp01['pro_homeowner_ind']=='N')&(allmrg_temp01['pro_disc_auto_home']=='Y'), 'Homeowner']='Not a Homeowner (Farmers Home)'
+    allmrg_temp01.loc[(allmrg_temp01['pro_homeowner_ind']=='N')&(allmrg_temp01['pro_disc_auto_home']=='N'), 'Homeowner']='Not a Homeowner'
+   
+
+    allmrg_temp01['Homeowner_x_Multicar']=allmrg_temp01['pro_homeowner_ind']+allmrg_temp01['disc_multi_car']
+    
+    allmrg_temp01['Homeowner_x_FSPA_Market_Tier']=allmrg_temp01['pro_homeowner_ind']+'&'+allmrg_temp01['pro_mkt_tier_calc']  
+    
+    allmrg_temp01.loc[allmrg_temp01['LIAB_CRED_TIER_MDL_A'].isin(['A','B','C','D','E']), 'Credit_Group']='Best'
+    allmrg_temp01.loc[allmrg_temp01['LIAB_CRED_TIER_MDL_A'].isin(['F','G','H','I','J']), 'Credit_Group']='Good'
+    allmrg_temp01.loc[allmrg_temp01['LIAB_CRED_TIER_MDL_A'].isin(['K','L','M','N','O']), 'Credit_Group']='Average'
+    allmrg_temp01.loc[allmrg_temp01['LIAB_CRED_TIER_MDL_A'].isin(['P','Q','R','S','T']), 'Credit_Group']='Modest'
+    allmrg_temp01.loc[allmrg_temp01['LIAB_CRED_TIER_MDL_A'].isin(['U','V','W','X','Y']), 'Credit_Group']='Worst'
+    allmrg_temp01.loc[allmrg_temp01['Credit_Group'].isnull(), 'Credit_Group']='No Hit'
+    
+    allmrg_temp01.loc[allmrg_temp01['pro_hh_struct_calc'].isin(['A: Youthful Married PNI','B: Youthful Single PNI']), 'HH_STRUCT_GROUP']='Youthful PNI'
+    allmrg_temp01.loc[allmrg_temp01['pro_hh_struct_calc'].isin(['C: Child in Household -','C: Child in Household - All Single','D: Child in Household']), 'HH_STRUCT_GROUP']='Non- youthful PNI with a youth on policy'
+    allmrg_temp01.loc[allmrg_temp01['HH_STRUCT_GROUP'].isnull(), 'HH_STRUCT_GROUP']='No Youthful'
+    
+    allmrg_temp01.loc[(allmrg_temp01['pro_PNI_age_group'].isin(['C','D','E','F','G','H','I','J','K','L']))\
+    &(allmrg_temp01['pro_homeowner_ind']=='Y')&(allmrg_temp01['prior_BI_lim_cd'].isin(['SH','HI']))\
+    &(allmrg_temp01['disc_multi_car']=='Y')&(allmrg_temp01['LIAB_CRED_TIER_MDL_A'].isin(['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O']))\
+    &(allmrg_temp01['CIF_CD'].isin(['H','HT'])), 'Ultra_Preferred']='Ultra-Preferred & Multicar'
+    
+    allmrg_temp01.loc[(allmrg_temp01['pro_PNI_age_group'].isin(['C','D','E','F','G','H','I','J','K','L']))\
+    &(allmrg_temp01['pro_homeowner_ind']=='Y')&(allmrg_temp01['prior_BI_lim_cd'].isin(['SH','HI']))\
+    &(allmrg_temp01['disc_multi_car']=='N')&(allmrg_temp01['LIAB_CRED_TIER_MDL_A'].isin(['A','B','C','D','E','F','ZA','G','H','I','J','K','L','M','N','O','P','Q','R']))\
+    &(allmrg_temp01['CIF_CD'].isin(['H','HT'])), 'Ultra_Preferred']='Ultra-Preferred & Single Car'
+      
+    allmrg_temp01.loc[allmrg_temp01['Ultra_Preferred'].isnull(), 'Ultra_Preferred']='Not Ultra-Preferred'
+    
+       
+    ##OB_1WAY
+    
+    ## PIF_CAPPED
+    temp00=allmrg_temp01
+    
+    for i in range(len(cov_list_st2)):
+        cap_lev_veh_mask = temp00[capvehcol_lev_prem2[i]]>0
+        cap_pro_veh_mask = temp00[capvehcol_pro_prem2[i]]>0
+        cap_str_veh_mask = temp00[capvehcol_str_prem2[i]]>0
+        cap_pro_aged_veh_mask = temp00[capvehcol_pro_aged_prem2[i]]>0
+                                          
+        temp_veh_mask =  round(temp00[capvehcol_pro_prem2[i]],1)<=round(temp00[capvehcol_lev_prem2[i]],1) 
+        temp00.loc[temp_veh_mask & cap_lev_veh_mask & cap_pro_veh_mask, winactcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winactcol[i]] = 0
+        temp00.loc[~cap_lev_veh_mask, winactcol[i]] = 0
+        temp00.loc[~cap_pro_veh_mask, winactcol[i]] = 0 
+                  
+        temp_veh_mask =  round(temp00[capvehcol_pro_aged_prem2[i]],1)<=round(temp00[capvehcol_str_prem2[i]],1)
+        temp00.loc[temp_veh_mask & cap_pro_aged_veh_mask & cap_str_veh_mask, winstrcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~cap_pro_aged_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~cap_str_veh_mask, winstrcol[i]] = 0
+                  
+        temp00.loc[cap_pro_veh_mask, covindcol[i]] = 1
+        temp00.loc[~cap_pro_veh_mask, covindcol[i]] = 0 
+        
+    ## aggregate
+
+    def oboneway(self):
+        temp00[self] =temp00[self].astype(str)
+        temp01 = temp00.groupby([self], as_index=False)[winactcol+winstrcol+covindcol+capvehcol_pro_aged_prem2+capvehcol_str_prem2+\
+        capvehcol_lev_prem2+capvehcol_unw_prem2+capvehcol_pro_prem2].sum()
+            
+        for i in range(len(cov_list_st2)):                       
+            temp01[obactcol[i]] = temp01.apply(lambda x: round(x[capvehcol_pro_prem2[i]]/x[capvehcol_lev_prem2[i]]-1,4) if x[capvehcol_lev_prem2[i]]>0 and x[capvehcol_pro_prem2[i]]>0 else np.nan, axis=1)
+            temp01[obbascol[i]] = temp01.apply(lambda x: round(x[capvehcol_pro_prem2[i]]/x[capvehcol_unw_prem2[i]]-1,4) if x[capvehcol_unw_prem2[i]]>0 and x[capvehcol_pro_prem2[i]]>0 else np.nan, axis=1)
+            temp01[obunwcol[i]] = temp01.apply(lambda x: round(x[capvehcol_unw_prem2[i]]/x[capvehcol_lev_prem2[i]]-1,4) if x[capvehcol_lev_prem2[i]]>0 and x[capvehcol_unw_prem2[i]]>0 else np.nan, axis=1)     
+            temp01[obstrcol[i]] = temp01.apply(lambda x: round(x[capvehcol_pro_aged_prem2[i]]/x[capvehcol_str_prem2[i]]-1,4) if x[capvehcol_pro_aged_prem2[i]]>0 and x[capvehcol_str_prem2[i]]>0 else np.nan, axis=1)  
+    
+            temp01[winact_rt_col[i]] = temp01.apply(lambda x: x[winactcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+            temp01[winstr_rt_col[i]] = temp01.apply(lambda x: x[winstrcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+        
+            temp01[numveh_col[i]] = temp01[covindcol[i]]
+             
+            temp01[str_ttlprem_col[i]]=temp01[capvehcol_str_prem2[i]]
+            temp01[lev_ttlprem_col[i]]=temp01[capvehcol_lev_prem2[i]]
+            temp01[pro_ttlprem_col[i]]=temp01[capvehcol_pro_prem2[i]]
+            
+            temp01[str_avgprem_col[i]]=temp01.apply(lambda x: x[capvehcol_str_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+            temp01[lev_avgprem_col[i]]=temp01.apply(lambda x: x[capvehcol_lev_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+            temp01[pro_avgprem_col[i]]=temp01.apply(lambda x: x[capvehcol_pro_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+              
+        temp01[vehexp_col] = temp01[covindcol].apply(lambda x: x / x.sum())
+        
+        value_vars_list=obactcol+obbascol+obunwcol+obstrcol+winact_rt_col+winstr_rt_col+vehexp_col+numveh_col+str_ttlprem_col+lev_ttlprem_col\
+        +pro_ttlprem_col+str_avgprem_col+lev_avgprem_col+pro_avgprem_col
+       
+        temp02=pd.melt(temp01.reset_index(), id_vars=[self], value_vars=value_vars_list,var_name='tempcol')
+        temp02['tempcol1']=temp02['tempcol'].str.extract(r'([a-zA-Z]+_[a-zA-Z]+)', flags=0, expand=True) 
+        temp02['tempcol2']=temp02['tempcol'].str.split('_',2).str[-1]
+        
+        temp03=temp02.pivot_table(index=[self,'tempcol2'],columns = ['tempcol1'], values = 'value',aggfunc=np.sum)
+        
+        
+        temp03['Book']='PIF_CAPPED'
+        temp03['Variable']=self
+        
+        temp03=temp03.rename(columns={'ACT_WINRT':'Actuarial_Veh_Win_Rate',\
+                                      'LEV_AVGPREM':'OnLevel_Avg_Veh_Premium',\
+                                      'LEV_TTLPREM':'OnLevel_Total_Premium',\
+                                      'OB_ACT':'Actuarial_Impact',\
+                                      'OB_BAS':'Base_Impact',\
+                                      'OB_STR':'Street_Impact',\
+                                      'OB_UNW':'Unwind_Impact',\
+                                      'PRO_AVGPREM':'Proposed_Avg_Veh_Premium',\
+                                      'PRO_TTLPREM':'Proposed_Total_Premium',\
+                                      'STR_AVGPREM':'Street_Avg_Veh_Premium',\
+                                      'STR_TTLPREM':'Street_Total_Premium',\
+                                      'STR_WINRT':'Street_Veh_Win_Rate',\
+                                      'VEH_EXPMIX':'Veh_Exposure_Mix',\
+                                      'VEH_NUM':'Number_of_Veh'})
+            
+        temp03.index.names = ['Level', 'Coverage']
+        temp03=temp03.reset_index()
+        #reorder
+        temp03=temp03[['Book','Variable','Level','Coverage','Actuarial_Impact','Base_Impact','Unwind_Impact','Street_Impact',\
+                       'Actuarial_Veh_Win_Rate','Street_Veh_Win_Rate','Veh_Exposure_Mix','Number_of_Veh','Street_Total_Premium',\
+                       'OnLevel_Total_Premium','Proposed_Total_Premium','Street_Avg_Veh_Premium','OnLevel_Avg_Veh_Premium','Proposed_Avg_Veh_Premium']]
+
+        return temp03
+    
+ 
+    OBONE=pd.DataFrame()
+    looplist=OB_ONEWAY_FLD.FIELD
+    for i in looplist:
+        OBONE=OBONE.append(oboneway(i))
+    
+    ## PIF_UNCAPPED
+    temp00=allmrg_temp01
+    
+    for i in range(len(cov_list_st2)):
+        uncap_lev_veh_mask = temp00[uncapvehcol_lev_prem2[i]]>0
+        uncap_pro_veh_mask = temp00[uncapvehcol_pro_prem2[i]]>0
+        uncap_str_veh_mask = temp00[uncapvehcol_str_prem2[i]]>0
+        uncap_pro_aged_veh_mask = temp00[uncapvehcol_pro_aged_prem2[i]]>0
+                                          
+        temp_veh_mask = round(temp00[uncapvehcol_pro_prem2[i]],1)<=round(temp00[uncapvehcol_lev_prem2[i]],1) 
+        temp00.loc[temp_veh_mask & uncap_lev_veh_mask & uncap_pro_veh_mask, winactcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winactcol[i]] = 0
+        temp00.loc[~uncap_lev_veh_mask, winactcol[i]] = 0
+        temp00.loc[~uncap_pro_veh_mask, winactcol[i]] = 0 
+                  
+        temp_veh_mask =  round(temp00[uncapvehcol_pro_aged_prem2[i]],1)<=round(temp00[uncapvehcol_str_prem2[i]],1)
+        temp00.loc[temp_veh_mask & uncap_pro_aged_veh_mask & uncap_str_veh_mask, winstrcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~uncap_pro_aged_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~uncap_str_veh_mask, winstrcol[i]] = 0
+                  
+        temp00.loc[uncap_pro_veh_mask, covindcol[i]] = 1
+        temp00.loc[~uncap_pro_veh_mask, covindcol[i]] = 0
+        
+    ## aggregate
+        
+    def oboneway(self):
+        temp00[self] =temp00[self].astype(str)
+        temp01 = temp00.groupby([self])[winactcol+winstrcol+covindcol+uncapvehcol_pro_aged_prem2+uncapvehcol_str_prem2+\
+        uncapvehcol_lev_prem2+uncapvehcol_unw_prem2+uncapvehcol_pro_prem2].apply(lambda x : x.sum())
+            
+        for i in range(len(cov_list_st2)):
+             temp01[obactcol[i]] = temp01.apply(lambda x: round(x[uncapvehcol_pro_prem2[i]]/x[uncapvehcol_lev_prem2[i]]-1,4) if x[uncapvehcol_lev_prem2[i]]>0 and x[uncapvehcol_pro_prem2[i]]>0 else np.nan, axis=1)
+             temp01[obbascol[i]] = temp01.apply(lambda x: round(x[uncapvehcol_pro_prem2[i]]/x[uncapvehcol_unw_prem2[i]]-1,4) if x[uncapvehcol_unw_prem2[i]]>0 and x[uncapvehcol_pro_prem2[i]]>0 else np.nan, axis=1)
+             temp01[obunwcol[i]] = temp01.apply(lambda x: round(x[uncapvehcol_unw_prem2[i]]/x[uncapvehcol_lev_prem2[i]]-1,4) if x[uncapvehcol_lev_prem2[i]]>0 and x[uncapvehcol_unw_prem2[i]]>0 else np.nan, axis=1)     
+             temp01[obstrcol[i]] = temp01.apply(lambda x: round(x[uncapvehcol_pro_aged_prem2[i]]/x[uncapvehcol_str_prem2[i]]-1,4) if x[uncapvehcol_pro_aged_prem2[i]]>0 and x[uncapvehcol_str_prem2[i]]>0 else np.nan, axis=1)  
+         
+             temp01[winact_rt_col[i]] = temp01.apply(lambda x: x[winactcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+             temp01[winstr_rt_col[i]] = temp01.apply(lambda x: x[winstrcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+        
+             temp01[numveh_col[i]] = temp01[covindcol[i]]
+             
+             temp01[str_ttlprem_col[i]]=temp01[uncapvehcol_str_prem2[i]]
+             temp01[lev_ttlprem_col[i]]=temp01[uncapvehcol_lev_prem2[i]]
+             temp01[pro_ttlprem_col[i]]=temp01[uncapvehcol_pro_prem2[i]]
+             temp01[str_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehcol_str_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+             temp01[lev_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehcol_lev_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+             temp01[pro_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehcol_pro_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+             
+        
+        temp01[vehexp_col] = temp01[covindcol].apply(lambda x: x/x.sum())
+        
+             
+        value_vars_list=obactcol+obbascol+obunwcol+obstrcol+winact_rt_col+winstr_rt_col+vehexp_col+numveh_col+str_ttlprem_col+lev_ttlprem_col\
+        +pro_ttlprem_col+str_avgprem_col+lev_avgprem_col+pro_avgprem_col
+        
+        temp02=pd.melt(temp01.reset_index(), id_vars=[self], value_vars=value_vars_list,var_name='tempcol')
+        temp02['tempcol1']=temp02['tempcol'].str.extract(r'([a-zA-Z]+_[a-zA-Z]+)', flags=0, expand=True) 
+        temp02['tempcol2']=temp02['tempcol'].str.split('_',2).str[-1]
+        
+        temp03=temp02.pivot_table(index=[self,'tempcol2'],columns = ['tempcol1'], values = 'value',aggfunc=np.sum)
+        
+        
+        temp03['Book']='PIF_UNCAPPED'
+        temp03['Variable']=self
+        
+        temp03=temp03.rename(columns={'ACT_WINRT':'Actuarial_Veh_Win_Rate',\
+                                      'LEV_AVGPREM':'OnLevel_Avg_Veh_Premium',\
+                                      'LEV_TTLPREM':'OnLevel_Total_Premium',\
+                                      'OB_ACT':'Actuarial_Impact',\
+                                      'OB_BAS':'Base_Impact',\
+                                      'OB_STR':'Street_Impact',\
+                                      'OB_UNW':'Unwind_Impact',\
+                                      'PRO_AVGPREM':'Proposed_Avg_Veh_Premium',\
+                                      'PRO_TTLPREM':'Proposed_Total_Premium',\
+                                      'STR_AVGPREM':'Street_Avg_Veh_Premium',\
+                                      'STR_TTLPREM':'Street_Total_Premium',\
+                                      'STR_WINRT':'Street_Veh_Win_Rate',\
+                                      'VEH_EXPMIX':'Veh_Exposure_Mix',\
+                                      'VEH_NUM':'Number_of_Veh'})
+            
+        temp03.index.names = ['Level', 'Coverage']
+        temp03=temp03.reset_index()
+        #reorder
+        temp03=temp03[['Book','Variable','Level','Coverage','Actuarial_Impact','Base_Impact','Unwind_Impact','Street_Impact',\
+        'Actuarial_Veh_Win_Rate','Street_Veh_Win_Rate','Veh_Exposure_Mix','Number_of_Veh','Street_Total_Premium',\
+        'OnLevel_Total_Premium','Proposed_Total_Premium','Street_Avg_Veh_Premium','OnLevel_Avg_Veh_Premium','Proposed_Avg_Veh_Premium']]
+        
+        return temp03
+    
+    for i in looplist:
+        OBONE=OBONE.append(oboneway(i))   
+    
+    # NB_UNCAPPED
+        # recheck line by line for NB
+    
+    temp00=pd.DataFrame(allmrg_temp01[(allmrg_temp01.NBRN_TYP == 'NBNH')])
+    
+    for i in range(len(cov_list_st2)):
+        NB_lev_veh_mask = temp00[uncapvehnbcol_lev_prem2[i]]>0
+        NB_pro_veh_mask = temp00[uncapvehnbcol_pro_prem2[i]]>0
+        NB_str_veh_mask = temp00[uncapvehnbcol_str_prem2[i]]>0
+    #    NB_pro_aged_veh_mask = temp00[uncapvehcol_pro_aged_prem2[i]]>0
+                                          
+        temp_veh_mask =  round(temp00[uncapvehnbcol_pro_prem2[i]],1)<=round(temp00[uncapvehnbcol_lev_prem2[i]],1) 
+        temp00.loc[temp_veh_mask & NB_pro_veh_mask & NB_lev_veh_mask, winactcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winactcol[i]] = 0
+        temp00.loc[~NB_pro_veh_mask, winactcol[i]] = 0
+        temp00.loc[~NB_lev_veh_mask, winactcol[i]] = 0 
+                  
+        temp_veh_mask =  round(temp00[uncapvehnbcol_pro_prem2[i]],1)<=round(temp00[uncapvehnbcol_str_prem2[i]],1)
+        temp00.loc[temp_veh_mask & NB_pro_veh_mask & NB_str_veh_mask, winstrcol[i]] = 1 
+        temp00.loc[~temp_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~NB_pro_veh_mask, winstrcol[i]] = 0
+        temp00.loc[~NB_str_veh_mask, winstrcol[i]] = 0
+                  
+        temp00.loc[NB_pro_veh_mask, covindcol[i]] = 1
+        temp00.loc[~NB_pro_veh_mask, covindcol[i]] = 0 
+        
+    ## aggregate
+    
+    def oboneway(self):
+        temp00[self] =temp00[self].astype(str)
+        temp01 = temp00.groupby([self])[winactcol+winstrcol+covindcol+uncapvehnbcol_str_prem2+\
+        uncapvehnbcol_lev_prem2+uncapvehnbcol_unw_prem2+uncapvehnbcol_pro_prem2].apply(lambda x : x.sum())
+            
+        for i in range(len(cov_list_st2)):
+             temp01[obactcol[i]] = temp01.apply(lambda x: round(x[uncapvehnbcol_pro_prem2[i]]/x[uncapvehnbcol_lev_prem2[i]]-1,4) if x[uncapvehnbcol_lev_prem2[i]]>0 and x[uncapvehnbcol_pro_prem2[i]]>0 else np.nan, axis=1)
+             temp01[obbascol[i]] = temp01.apply(lambda x: round(x[uncapvehnbcol_pro_prem2[i]]/x[uncapvehnbcol_unw_prem2[i]]-1,4) if x[uncapvehnbcol_unw_prem2[i]]>0 and x[uncapvehnbcol_pro_prem2[i]]>0 else np.nan, axis=1)
+             temp01[obunwcol[i]] = temp01.apply(lambda x: round(x[uncapvehnbcol_unw_prem2[i]]/x[uncapvehnbcol_lev_prem2[i]]-1,4) if x[uncapvehnbcol_lev_prem2[i]]>0 and x[uncapvehnbcol_unw_prem2[i]]>0 else np.nan, axis=1)     
+             temp01[obstrcol[i]] = temp01.apply(lambda x: round(x[uncapvehnbcol_pro_prem2[i]]/x[uncapvehnbcol_str_prem2[i]]-1,4) if x[uncapvehnbcol_pro_prem2[i]]>0 and x[uncapvehnbcol_str_prem2[i]]>0 else np.nan, axis=1)  
+         
+             temp01[winact_rt_col[i]] = temp01.apply(lambda x: x[winactcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+             temp01[winstr_rt_col[i]] = temp01.apply(lambda x: x[winstrcol[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)  
+        
+             temp01[numveh_col[i]] = temp01[covindcol[i]]
+             
+             temp01[str_ttlprem_col[i]]=temp01[uncapvehnbcol_str_prem2[i]]
+             temp01[lev_ttlprem_col[i]]=temp01[uncapvehnbcol_lev_prem2[i]]
+             temp01[pro_ttlprem_col[i]]=temp01[uncapvehnbcol_pro_prem2[i]]
+             temp01[str_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehnbcol_str_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+             temp01[lev_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehnbcol_lev_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+             temp01[pro_avgprem_col[i]]=temp01.apply(lambda x: x[uncapvehnbcol_pro_prem2[i]]/x[covindcol[i]] if x[covindcol[i]]>0 else np.nan, axis=1)   
+             
+        
+        temp01[vehexp_col] = temp01[covindcol].apply(lambda x: x/x.sum())
+        
+             
+        value_vars_list=obactcol+obbascol+obunwcol+obstrcol+winact_rt_col+winstr_rt_col+vehexp_col+numveh_col+str_ttlprem_col+lev_ttlprem_col\
+        +pro_ttlprem_col+str_avgprem_col+lev_avgprem_col+pro_avgprem_col
+        
+        temp02=pd.melt(temp01.reset_index(), id_vars=[self], value_vars=value_vars_list,var_name='tempcol')
+        temp02['tempcol1']=temp02['tempcol'].str.extract(r'([a-zA-Z]+_[a-zA-Z]+)', flags=0, expand=True) 
+        temp02['tempcol2']=temp02['tempcol'].str.split('_',2).str[-1]
+        
+        temp03=temp02.pivot_table(index=[self,'tempcol2'],columns = ['tempcol1'], values = 'value',aggfunc=np.sum)
+        
+        
+        temp03['Book']='NB_UNCAPPED'
+        temp03['Variable']=self
+        
+        temp03=temp03.rename(columns={'ACT_WINRT':'Actuarial_Veh_Win_Rate',\
+                                      'LEV_AVGPREM':'OnLevel_Avg_Veh_Premium',\
+                                      'LEV_TTLPREM':'OnLevel_Total_Premium',\
+                                      'OB_ACT':'Actuarial_Impact',\
+                                      'OB_BAS':'Base_Impact',\
+                                      'OB_STR':'Street_Impact',\
+                                      'OB_UNW':'Unwind_Impact',\
+                                      'PRO_AVGPREM':'Proposed_Avg_Veh_Premium',\
+                                      'PRO_TTLPREM':'Proposed_Total_Premium',\
+                                      'STR_AVGPREM':'Street_Avg_Veh_Premium',\
+                                      'STR_TTLPREM':'Street_Total_Premium',\
+                                      'STR_WINRT':'Street_Veh_Win_Rate',\
+                                      'VEH_EXPMIX':'Veh_Exposure_Mix',\
+                                      'VEH_NUM':'Number_of_Veh'})
+            
+        temp03.index.names = ['Level', 'Coverage']
+        temp03=temp03.reset_index()
+        #reorder
+        temp03=temp03[['Book','Variable','Level','Coverage','Actuarial_Impact','Base_Impact','Unwind_Impact','Street_Impact',\
+        'Actuarial_Veh_Win_Rate','Street_Veh_Win_Rate','Veh_Exposure_Mix','Number_of_Veh','Street_Total_Premium',\
+        'OnLevel_Total_Premium','Proposed_Total_Premium','Street_Avg_Veh_Premium','OnLevel_Avg_Veh_Premium','Proposed_Avg_Veh_Premium']]
+        
+        return temp03
+    
+    for i in looplist:
+        OBONE=OBONE.append(oboneway(i))
+        
+    OBONE.loc[OBONE.Book=='NB_UNCAPPED', ['Street_Impact','Street_Veh_Win_Rate','Street_Total_Premium','Street_Avg_Veh_Premium']] = np.nan
+    
+    OBONE.to_csv(temp_filepath,index=False)
+    shutil.move(temp_filepath, out_dir+'/OB_1WAY'+cls_run.suffix_product+'.csv')
+#    OBONE.to_csv(out_dir+'/OB_1WAY_'+cls_run.suffix_product+'.csv',index=False) 
+    
+    return PIF_CAP_HH, PIF_UNCAP_HH, NB_UNCAP_HH
+
+"""This is the main cycle that runs the various functions above"""
+if __name__ == '__main__':
+    start_time = time()
+    from A_Control import cls_run
+    pif_veh_main(cls_run)
+    print("--- {}s seconds ---".format(time() - start_time))

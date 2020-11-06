@@ -1,0 +1,131 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Jun  5 08:07:58 2020
+
+@author: ANDREA.SHEN
+"""
+import pandas as pd
+
+##########################################################
+############  Reports_PLCY_01 - Import & Merge ###########
+##########################################################
+
+def pif_plcy_main(cls_run):
+    '''
+    Sums the Capped Premiums, Uncapped Premiums, and Technical Prices from the OnLevel, Street, Unwind and Proposed Results files.  
+        Parameters: 
+            cls_run (class): A class object, specified in A_Control,  holding variables for main folder path, state abbreviation, suffix of product and indicator 
+            to also run Quotes
+        Returns: 
+            file (csv): A csv file called OB_Blending* saved within the reports_inputs folder
+    '''
+    ## Import Data
+    rsltpif_dir = cls_run.main_dir+'/results/PIF'
+    ref_dir = cls_run.main_dir+'/python/aob_tool_reports/ref_tbl'
+    out_dir = cls_run.main_dir+'/reports_inputs'
+    
+    df_COV_file = pd.read_csv(ref_dir + '/'+'COV.csv', usecols=['COV', 'COV_TYP'])
+    COV_list = [row for row in df_COV_file['COV']]
+    COV_list = COV_list + ['COMP_min_veh', 'COLL_min_veh']
+        
+    ## Open Results files ##
+    PIF_ONLVL_PLCY = pd.read_csv(rsltpif_dir + '/'+'{}_PIF_OnLevel_plcy{}.csv'.format(cls_run.state_abbr, cls_run.suffix_product))
+    PIF_UNWIND_PLCY = pd.read_csv(rsltpif_dir + '/'+'{}_PIF_Unwind_plcy{}.csv'.format(cls_run.state_abbr, cls_run.suffix_product))
+    PIF_STREET_PLCY = pd.read_csv(rsltpif_dir + '/'+'{}_PIF_Street_plcy{}.csv'.format(cls_run.state_abbr, cls_run.suffix_product))
+    PIF_PROPOSED_PLCY = pd.read_csv(rsltpif_dir + '/'+'{}_PIF_Proposed_plcy{}.csv'.format(cls_run.state_abbr, cls_run.suffix_product))
+    
+    ##  Sum columns of results files ##
+    PIF_SUMS = (PIF_ONLVL_PLCY.sum(axis=0, numeric_only=True), PIF_PROPOSED_PLCY.sum(axis=0, numeric_only=True), \
+                PIF_UNWIND_PLCY.sum(axis=0, numeric_only=True), PIF_STREET_PLCY.sum(axis=0, numeric_only=True))
+    NB_SUMS = (PIF_ONLVL_PLCY.loc[PIF_ONLVL_PLCY['nbrn_typ'] == 'NBNH'].sum(axis=0, numeric_only=True), \
+               PIF_PROPOSED_PLCY.loc[PIF_PROPOSED_PLCY['nbrn_typ'] == 'NBNH'].sum(axis=0, numeric_only=True))
+      
+    list_OB_Blend_Columns = ['Book', 'Coverage', 'Actuarial_Impact', 'Base_Impact', 'Unwind_Impact', 'Street_Impact',\
+                             'Street_Total_Premium','Street_Aged_Total_Premium', 'OnLevel_Total_Premium','OnLevel_Aged_Total_Premium',\
+                             'Unwind_Total_Premium','Unwind_Aged_Total_Premium','Proposed_Total_Premium','Proposed_Aged_Total_Premium']
+    ## Create PIF_CAPPED book ##
+    df_pif_capped = create_book_blends(COV_list, 'PIF_CAPPED', PIF_SUMS, 'cap_prem', 'PIF')    
+    df_pif_capped['Actuarial_Impact'] = (df_pif_capped['Proposed_Total_Premium'] / df_pif_capped['OnLevel_Total_Premium']).fillna(1)-1
+    df_pif_capped['Base_Impact'] = (df_pif_capped['Proposed_Total_Premium'] / df_pif_capped['Unwind_Total_Premium']).fillna(1)-1
+    df_pif_capped['Unwind_Impact'] = (df_pif_capped['Unwind_Total_Premium'] / df_pif_capped['OnLevel_Total_Premium']).fillna(1)-1
+    df_pif_capped['Street_Impact'] = (df_pif_capped['Proposed_Aged_Total_Premium'] / df_pif_capped['Street_Total_Premium']).fillna(1)-1
+
+    ## Create PIF_UNCAPPED book ##             
+    df_pif_uncapped = create_book_blends(COV_list, 'PIF_UNCAPPED', PIF_SUMS, 'uncap_prem', 'PIF')
+    df_pif_uncapped['Actuarial_Impact'] = (df_pif_uncapped['Proposed_Total_Premium'] / df_pif_uncapped['OnLevel_Total_Premium']).fillna(1)-1
+    df_pif_uncapped['Base_Impact'] = (df_pif_uncapped['Proposed_Total_Premium'] / df_pif_uncapped['Unwind_Total_Premium']).fillna(1)-1
+    df_pif_uncapped['Unwind_Impact'] = (df_pif_uncapped['Unwind_Total_Premium'] / df_pif_uncapped['OnLevel_Total_Premium']).fillna(1)-1
+    df_pif_uncapped['Street_Impact'] = (df_pif_uncapped['Proposed_Aged_Total_Premium'] / df_pif_uncapped['Street_Total_Premium']).fillna(1)-1
+    
+    ## Create NB_UNCAPPED book ##              
+    df_nb_uncapped = create_book_blends(COV_list, 'NB_UNCAPPED', NB_SUMS, 'tech_price', 'NB')              
+    df_nb_uncapped['Actuarial_Impact'] = (df_nb_uncapped['Proposed_Total_Premium'] / df_nb_uncapped['OnLevel_Total_Premium']).fillna(1)-1
+                  
+    ## Create OB_Blending by combining Books            
+    df_OB_Blend = df_pif_capped.append(df_pif_uncapped)
+    df_OB_Blend = df_OB_Blend.append(df_nb_uncapped).fillna('')
+    
+    ## Check if quotes are also being run ##
+    if cls_run.quotes_indicator:
+        rsltQuotes_dir = cls_run.main_dir+'/results/Quotes'
+        dataQuotes_dir = cls_run.main_dir+'/data/Quotes'
+        ## Open Quotes Results file
+        Quotes_DATA_PLCY = pd.read_csv(dataQuotes_dir  + '/Quotes_plcy'+cls_run.suffix_product+'.csv', usecols=['SRC_HH_NUM', 'QUOTE_ID','BOUND_IND'])
+        Quotes_ONLVL_PLCY = pd.read_csv(rsltQuotes_dir + '/'+cls_run.state_abbr+'_Quotes_OnLevel_plcy'+cls_run.suffix_product+'.csv')
+        Quotes_STREET_PLCY = pd.read_csv(rsltQuotes_dir + '/'+cls_run.state_abbr+'_Quotes_Street_plcy'+cls_run.suffix_product+'.csv')
+        Quotes_PROPOSED_PLCY = pd.read_csv(rsltQuotes_dir + '/'+cls_run.state_abbr+'_Quotes_Proposed_plcy'+cls_run.suffix_product+'.csv')
+        Quotes_SUMS = (Quotes_ONLVL_PLCY.sum(axis=0, numeric_only=True), Quotes_PROPOSED_PLCY.sum(axis=0, numeric_only=True), Quotes_STREET_PLCY.sum(axis=0, numeric_only=True))
+        Bound_ONLVL_PLCY = pd.merge(Quotes_DATA_PLCY, Quotes_ONLVL_PLCY,
+                 left_on = ['SRC_HH_NUM','QUOTE_ID'], right_on = ['str_src_hh_num','str_quote_id'], how = 'inner')
+        Bound_Street_PLCY = pd.merge(Quotes_DATA_PLCY, Quotes_STREET_PLCY,
+                 left_on = ['SRC_HH_NUM','QUOTE_ID'], right_on = ['str_src_hh_num','str_quote_id'], how = 'inner')
+        Bound_Proposed_PLCY = pd.merge(Quotes_DATA_PLCY, Quotes_PROPOSED_PLCY,
+                 left_on = ['SRC_HH_NUM','QUOTE_ID'], right_on = ['str_src_hh_num','str_quote_id'], how = 'inner')
+        Bound_SUMS = (Bound_ONLVL_PLCY.loc[Bound_ONLVL_PLCY['BOUND_IND'] == 'Y'].sum(axis=0, numeric_only=True), \
+                      Bound_Street_PLCY.loc[Bound_Street_PLCY['BOUND_IND'] == 'Y'].sum(axis=0, numeric_only=True), \
+                      Bound_Proposed_PLCY.loc[Bound_Proposed_PLCY['BOUND_IND'] == 'Y'].sum(axis=0, numeric_only=True))
+        ## Create All_Quotes book ##
+        df_all_quotes = create_book_blends(COV_list, 'BOUND_QUOTES', Quotes_SUMS, 'tech_price', 'QUOTES')   
+        df_all_quotes['Actuarial_Impact'] = (df_all_quotes['Proposed_Total_Premium'] / df_all_quotes['OnLevel_Total_Premium']).fillna(1)-1
+        ## Create Bound_Quotes book ##            
+        df_bound_quotes = create_book_blends(COV_list, 'ALL_QUOTES', Bound_SUMS, 'tech_price', 'QUOTES')
+        df_bound_quotes['Actuarial_Impact'] = (df_bound_quotes['Proposed_Total_Premium'] / df_bound_quotes['OnLevel_Total_Premium']).fillna(1)-1
+        ## Add Quotes books to OB_Blend ##
+        df_OB_Blend = df_OB_Blend.append(df_all_quotes).fillna('')
+        df_OB_Blend = df_OB_Blend.append(df_bound_quotes).fillna('')
+    
+    ## Output dataframe to OB_Blending file ##
+    df_OB_Blend = df_OB_Blend[list_OB_Blend_Columns]
+    ''' Add code to remove _veh from COMP_min/COLL_min '''
+    df_OB_Blend.to_csv(out_dir+'/OB_BLENDING'+cls_run.suffix_product+'.csv',index=False)
+    
+def create_book_blends(COV_list, book_name, book_sums, prefix, book_ind):
+    '''
+    Formats a book (PIF_CAPPED, PIF_UNCAPPED, NB_UNCAPPED, QUOTES) from the OnLevel, Street, Unwind and Proposed sums dataframes for OB_Blending output.  
+        Parameters: 
+            COV_list (list): A list of the coverages to be looped through
+            book_name (str): Name of book; this string will be output in the Book column in OB_Blending
+            book_sums (tuple): Tuple that holds the summed dataframes of the results files; number of dataframes within depend on whether PIF-4; NB-2; Quotes-3
+            prefix (str): This is the prefix for the column names dependent on book. examples: PIF_Capped=cap_prem, PIF_Uncapped=uncap_prem, NB_Capped=tech_price
+            book_ind (str): This indicates whether running PIF, Quotes or NB; used to adjust formulas for book_sums(tuple) length that varies by book
+        Returns: 
+            df_book (dataframe): A dataframe formatted to match the OB_Blending* output
+    '''
+    df_book = pd.DataFrame(COV_list, columns=['Coverage'])
+    df_book['Book'] = book_name
+    for cvg in COV_list:
+       df_book.loc[df_book['Coverage'] =='{}'.format(cvg),'OnLevel_Total_Premium'] = book_sums[0]['{}_{}'.format(prefix,cvg)]
+       df_book.loc[df_book['Coverage'] =='{}'.format(cvg),'OnLevel_Aged_Total_Premium'] = book_sums[0]['{}_aged_{}'.format(prefix,cvg)]
+       df_book.loc[df_book['Coverage'] =='{}'.format(cvg),'Proposed_Total_Premium'] = book_sums[1]['{}_{}'.format(prefix,cvg)]
+       df_book.loc[df_book['Coverage'] =='{}'.format(cvg),'Proposed_Aged_Total_Premium'] = book_sums[1]['{}_aged_{}'.format(prefix,cvg)]
+       if book_ind == 'PIF':
+           df_book.loc[df_book['Coverage'] =='{}'.format(cvg),'Unwind_Total_Premium'] = book_sums[2]['{}_{}'.format(prefix,cvg)]
+           df_book.loc[df_book['Coverage'] =='{}'.format(cvg),'Unwind_Aged_Total_Premium'] = book_sums[2]['{}_aged_{}'.format(prefix,cvg)]
+           df_book.loc[df_book['Coverage'] =='{}'.format(cvg),'Street_Total_Premium'] = book_sums[3]['{}_{}'.format(prefix,cvg)]
+           df_book.loc[df_book['Coverage'] =='{}'.format(cvg),'Street_Aged_Total_Premium'] = book_sums[3]['{}_aged_{}'.format(prefix,cvg)]
+       elif book_ind == 'QUOTES':
+           df_book.loc[df_book['Coverage'] =='{}'.format(cvg),'Street_Total_Premium'] = book_sums[2]['{}_{}'.format(prefix,cvg)]
+           df_book.loc[df_book['Coverage'] =='{}'.format(cvg),'Street_Aged_Total_Premium'] = book_sums[2]['{}_aged_{}'.format(prefix,cvg)]
+    
+    df_book.sort_values('Coverage', inplace=True)
+    return df_book

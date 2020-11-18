@@ -2,7 +2,9 @@
 """
 Created on Thu Jun 18 12:15:10 2020
 
-@author: ANDREA.SHEN
+Last Updated on Wed Nov 18 2020
+
+@authors: ANDREA.SHEN, NICK.GAUGLER
 """
 
 import pandas as pd
@@ -140,50 +142,50 @@ def pif_hist_main(cls_run, PIF_CAP_HH, PIF_UNCAP_HH, NB_UNCAP_HH):
         
     ###
     ###
-    
-    temp00=NB_UNCAP_HH
-    temp00['cvg_ind_TOTAL'] = temp00.apply(lambda x: 1 if x['lev_tech_price_TOTAL']>0 and x['str_tech_price_TOTAL']>0 and x['pro_tech_price_TOTAL']>0 else 0, axis=1) 
-    acttemp01=hist('OB_ACT_TOTAL').reset_index()
-    
-    acttemp02 = acttemp01.groupby(['pro_mkt_tier_calc'])['cvg_ind_TOTAL'].apply(lambda x : x.sum()).reset_index()
-    
-    acttemp03 = pd.merge(acttemp01,acttemp02,left_on = ['pro_mkt_tier_calc'],right_on = ['pro_mkt_tier_calc'],how='left')
-    acttemp03['pct_HH_bucket']=acttemp03['cvg_ind_TOTAL_x']/acttemp03['cvg_ind_TOTAL_y']
+    if cls_run.nbnh_run_indicator:
+        temp00=NB_UNCAP_HH
+        temp00['cvg_ind_TOTAL'] = temp00.apply(lambda x: 1 if x['lev_tech_price_TOTAL']>0 and x['str_tech_price_TOTAL']>0 and x['pro_tech_price_TOTAL']>0 else 0, axis=1) 
+        acttemp01=hist('OB_ACT_TOTAL').reset_index()
         
-    acttemp03=acttemp03.rename(columns={'cvg_ind_TOTAL_x':'num_HH_bucket_act','pct_HH_bucket':'pct_HH_bucket_act','cvg_ind_TOTAL_y':'num_HH_total'})
-    
-    temp00=NB_UNCAP_HH
-    temp00['cvg_ind_TOTAL'] = temp00.apply(lambda x: 1 if x['lev_tech_price_TOTAL']>0 and x['str_tech_price_TOTAL']>0 and x['pro_tech_price_TOTAL']>0 else 0, axis=1) 
-    strtemp01=hist('OB_STR_TOTAL').reset_index()
-    strtemp02 = strtemp01.groupby(['pro_mkt_tier_calc'])['cvg_ind_TOTAL'].apply(lambda x : x.sum()).reset_index()
-    
-    strtemp03 = pd.merge(strtemp01,strtemp02,left_on = ['pro_mkt_tier_calc'],right_on = ['pro_mkt_tier_calc'],how='left')
-    strtemp03['pct_HH_bucket']=strtemp03['cvg_ind_TOTAL_x']/strtemp03['cvg_ind_TOTAL_y']
+        acttemp02 = acttemp01.groupby(['pro_mkt_tier_calc'])['cvg_ind_TOTAL'].apply(lambda x : x.sum()).reset_index()
         
-    strtemp03=strtemp03.rename(columns={'cvg_ind_TOTAL_x':'num_HH_bucket_str','pct_HH_bucket':'pct_HH_bucket_str','cvg_ind_TOTAL_y':'num_HH_total'})
-    
-    ###
-    
-    histpercmrg\
-            = pd.merge(HIST_PERC, acttemp03,
-                 left_on = ['CAT','MKT_TIER_CALC_PRO'], right_on = ['cat','pro_mkt_tier_calc'], how = 'left')
-    
-    histpercmrg\
-            = pd.merge(histpercmrg, strtemp03,
-                 left_on = ['CAT','MKT_TIER_CALC_PRO'], right_on = ['cat','pro_mkt_tier_calc'], how = 'left')
-        
-    histpercmrg= pd.merge(histpercmrg,acttemp02,left_on = ['MKT_TIER_CALC_PRO'],right_on = ['pro_mkt_tier_calc'],how='left')    
-    histpercmrg=histpercmrg.fillna(0).drop(['TYPE','LOW','HIGH','CAT','pro_mkt_tier_calc_x','cat_x','low_cutoff_x','high_cutoff_x','num_HH_total_x',\
-                                  'pro_mkt_tier_calc_y','cat_y','low_cutoff_y','high_cutoff_y','num_HH_total_y','pro_mkt_tier_calc'], axis=1)
-    histpercmrg['Book']='NB_UNCAPPED'
-    histpercmrg['Coverage']='TOTAL'
-    
-    histpercmrg=histpercmrg.rename(columns={'LOW100':'low_cutoff',\
-                                            'HIGH100':'high_cutoff','cvg_ind_TOTAL':'num_HH_total'})
+        acttemp03 = pd.merge(acttemp01,acttemp02,left_on = ['pro_mkt_tier_calc'],right_on = ['pro_mkt_tier_calc'],how='left')
+        acttemp03['pct_HH_bucket']=acttemp03['cvg_ind_TOTAL_x']/acttemp03['cvg_ind_TOTAL_y']
             
-    histperc=histperc.append(histpercmrg[['Book','Coverage','MKT_TIER_CALC_PRO','low_cutoff','high_cutoff','pct_HH_bucket_act',\
-                                          'num_HH_bucket_act','pct_HH_bucket_str','num_HH_bucket_str','num_HH_total']])
+        acttemp03=acttemp03.rename(columns={'cvg_ind_TOTAL_x':'num_HH_bucket_act','pct_HH_bucket':'pct_HH_bucket_act','cvg_ind_TOTAL_y':'num_HH_total'})
         
+        temp00=NB_UNCAP_HH
+        temp00['cvg_ind_TOTAL'] = temp00.apply(lambda x: 1 if x['lev_tech_price_TOTAL']>0 and x['str_tech_price_TOTAL']>0 and x['pro_tech_price_TOTAL']>0 else 0, axis=1) 
+        strtemp01=hist('OB_STR_TOTAL').reset_index()
+        strtemp02 = strtemp01.groupby(['pro_mkt_tier_calc'])['cvg_ind_TOTAL'].apply(lambda x : x.sum()).reset_index()
+        
+        strtemp03 = pd.merge(strtemp01,strtemp02,left_on = ['pro_mkt_tier_calc'],right_on = ['pro_mkt_tier_calc'],how='left')
+        strtemp03['pct_HH_bucket']=strtemp03['cvg_ind_TOTAL_x']/strtemp03['cvg_ind_TOTAL_y']
+            
+        strtemp03=strtemp03.rename(columns={'cvg_ind_TOTAL_x':'num_HH_bucket_str','pct_HH_bucket':'pct_HH_bucket_str','cvg_ind_TOTAL_y':'num_HH_total'})
+        
+        ###
+        
+        histpercmrg\
+                = pd.merge(HIST_PERC, acttemp03,
+                     left_on = ['CAT','MKT_TIER_CALC_PRO'], right_on = ['cat','pro_mkt_tier_calc'], how = 'left')
+        
+        histpercmrg\
+                = pd.merge(histpercmrg, strtemp03,
+                     left_on = ['CAT','MKT_TIER_CALC_PRO'], right_on = ['cat','pro_mkt_tier_calc'], how = 'left')
+            
+        histpercmrg= pd.merge(histpercmrg,acttemp02,left_on = ['MKT_TIER_CALC_PRO'],right_on = ['pro_mkt_tier_calc'],how='left')    
+        histpercmrg=histpercmrg.fillna(0).drop(['TYPE','LOW','HIGH','CAT','pro_mkt_tier_calc_x','cat_x','low_cutoff_x','high_cutoff_x','num_HH_total_x',\
+                                      'pro_mkt_tier_calc_y','cat_y','low_cutoff_y','high_cutoff_y','num_HH_total_y','pro_mkt_tier_calc'], axis=1)
+        histpercmrg['Book']='NB_UNCAPPED'
+        histpercmrg['Coverage']='TOTAL'
+        
+        histpercmrg=histpercmrg.rename(columns={'LOW100':'low_cutoff',\
+                                                'HIGH100':'high_cutoff','cvg_ind_TOTAL':'num_HH_total'})
+                
+        histperc=histperc.append(histpercmrg[['Book','Coverage','MKT_TIER_CALC_PRO','low_cutoff','high_cutoff','pct_HH_bucket_act',\
+                                              'num_HH_bucket_act','pct_HH_bucket_str','num_HH_bucket_str','num_HH_total']])
+            
         
     histperc.to_csv(out_dir+'/HIST_MKT_PERCENT'+cls_run.suffix_product+'.csv',index=False)
     
@@ -293,7 +295,7 @@ def pif_hist_main(cls_run, PIF_CAP_HH, PIF_UNCAP_HH, NB_UNCAP_HH):
         
     histdollmrg= pd.merge(histdollmrg,acttemp02,left_on = ['MKT_TIER_CALC_PRO'],right_on = ['pro_mkt_tier_calc'],how='left')    
     histdollmrg=histdollmrg.fillna(0).drop(['TYPE','LOW100','HIGH100','CAT','pro_mkt_tier_calc_x','cat_x','low_cutoff_x','high_cutoff_x','num_HH_total_x',\
-    'pro_mkt_tier_calc_y','cat_y','low_cutoff_y','high_cutoff_y','num_HH_total_y','pro_mkt_tier_calc'], axis=1)
+                                  'pro_mkt_tier_calc_y','cat_y','low_cutoff_y','high_cutoff_y','num_HH_total_y','pro_mkt_tier_calc'], axis=1)
     histdollmrg['Book']='PIF_UNCAPPED'
     histdollmrg['Coverage']='TOTAL'
     
@@ -305,53 +307,53 @@ def pif_hist_main(cls_run, PIF_CAP_HH, PIF_UNCAP_HH, NB_UNCAP_HH):
     
     ###
     # NB_UNCAPPED
-    
-    temp00=NB_UNCAP_HH
-    temp00['cvg_ind_TOTAL'] = temp00.apply(lambda x: 1 if x['pro_tech_price_TOTAL']>0 and x['lev_tech_price_TOTAL']>0 else 0, axis=1)
-    acttemp01=hist('pro_tech_price_TOTAL','lev_tech_price_TOTAL').reset_index()
-    
-    acttemp02 = acttemp01.groupby(['pro_mkt_tier_calc'])['cvg_ind_TOTAL'].apply(lambda x : x.sum()).reset_index()
-    
-    acttemp03 = pd.merge(acttemp01,acttemp02,left_on = ['pro_mkt_tier_calc'],right_on = ['pro_mkt_tier_calc'],how='left')
-    acttemp03['pct_HH_bucket']=acttemp03['cvg_ind_TOTAL_x']/acttemp03['cvg_ind_TOTAL_y']
+    if cls_run.nbnh_run_indicator:
+        temp00=NB_UNCAP_HH
+        temp00['cvg_ind_TOTAL'] = temp00.apply(lambda x: 1 if x['pro_tech_price_TOTAL']>0 and x['lev_tech_price_TOTAL']>0 else 0, axis=1)
+        acttemp01=hist('pro_tech_price_TOTAL','lev_tech_price_TOTAL').reset_index()
         
-    acttemp03=acttemp03.rename(columns={'cvg_ind_TOTAL_x':'num_HH_bucket_act','pct_HH_bucket':'pct_HH_bucket_act','cvg_ind_TOTAL_y':'num_HH_total'})
-    
-    temp00=NB_UNCAP_HH
-    temp00['cvg_ind_TOTAL'] = temp00.apply(lambda x: 1 if x['pro_tech_price_TOTAL']>0 and x['str_tech_price_TOTAL']>0 else 0, axis=1)
-    strtemp01=hist('pro_tech_price_TOTAL','str_tech_price_TOTAL').reset_index()
-    strtemp02 = strtemp01.groupby(['pro_mkt_tier_calc'])['cvg_ind_TOTAL'].apply(lambda x : x.sum()).reset_index()
-    
-    strtemp03 = pd.merge(strtemp01,strtemp02,left_on = ['pro_mkt_tier_calc'],right_on = ['pro_mkt_tier_calc'],how='left')
-    strtemp03['pct_HH_bucket']=strtemp03['cvg_ind_TOTAL_x']/strtemp03['cvg_ind_TOTAL_y']
+        acttemp02 = acttemp01.groupby(['pro_mkt_tier_calc'])['cvg_ind_TOTAL'].apply(lambda x : x.sum()).reset_index()
         
-    strtemp03=strtemp03.rename(columns={'cvg_ind_TOTAL_x':'num_HH_bucket_str','pct_HH_bucket':'pct_HH_bucket_str','cvg_ind_TOTAL_y':'num_HH_total'})
-    
-    
-    histdollmrg\
-            = pd.merge(HIST_DOLL,
-                 acttemp03,
-                 left_on = ['CAT','MKT_TIER_CALC_PRO'],
-                 right_on = ['cat','pro_mkt_tier_calc'],
-                 how = 'left')
-    
-    histdollmrg\
-            = pd.merge(histdollmrg,
-                 strtemp03,
-                 left_on = ['CAT','MKT_TIER_CALC_PRO'],
-                 right_on = ['cat','pro_mkt_tier_calc'],
-                 how = 'left')
-        
-    histdollmrg= pd.merge(histdollmrg,acttemp02,left_on = ['MKT_TIER_CALC_PRO'],right_on = ['pro_mkt_tier_calc'],how='left')    
-    histdollmrg=histdollmrg.fillna(0).drop(['TYPE','LOW100','HIGH100','CAT','pro_mkt_tier_calc_x','cat_x','low_cutoff_x','high_cutoff_x','num_HH_total_x',\
-    'pro_mkt_tier_calc_y','cat_y','low_cutoff_y','high_cutoff_y','num_HH_total_y','pro_mkt_tier_calc'], axis=1)
-    histdollmrg['Book']='NB_UNCAPPED'
-    histdollmrg['Coverage']='TOTAL'
-    
-    histdollmrg=histdollmrg.rename(columns={'LOW':'low_cutoff',\
-    'HIGH':'high_cutoff','cvg_ind_TOTAL':'num_HH_total'})
+        acttemp03 = pd.merge(acttemp01,acttemp02,left_on = ['pro_mkt_tier_calc'],right_on = ['pro_mkt_tier_calc'],how='left')
+        acttemp03['pct_HH_bucket']=acttemp03['cvg_ind_TOTAL_x']/acttemp03['cvg_ind_TOTAL_y']
             
-    histdoll=histdoll.append(histdollmrg[['Book','Coverage','MKT_TIER_CALC_PRO','low_cutoff','high_cutoff','pct_HH_bucket_act',\
-    'num_HH_bucket_act','pct_HH_bucket_str','num_HH_bucket_str','num_HH_total']])
+        acttemp03=acttemp03.rename(columns={'cvg_ind_TOTAL_x':'num_HH_bucket_act','pct_HH_bucket':'pct_HH_bucket_act','cvg_ind_TOTAL_y':'num_HH_total'})
+        
+        temp00=NB_UNCAP_HH
+        temp00['cvg_ind_TOTAL'] = temp00.apply(lambda x: 1 if x['pro_tech_price_TOTAL']>0 and x['str_tech_price_TOTAL']>0 else 0, axis=1)
+        strtemp01=hist('pro_tech_price_TOTAL','str_tech_price_TOTAL').reset_index()
+        strtemp02 = strtemp01.groupby(['pro_mkt_tier_calc'])['cvg_ind_TOTAL'].apply(lambda x : x.sum()).reset_index()
+        
+        strtemp03 = pd.merge(strtemp01,strtemp02,left_on = ['pro_mkt_tier_calc'],right_on = ['pro_mkt_tier_calc'],how='left')
+        strtemp03['pct_HH_bucket']=strtemp03['cvg_ind_TOTAL_x']/strtemp03['cvg_ind_TOTAL_y']
+            
+        strtemp03=strtemp03.rename(columns={'cvg_ind_TOTAL_x':'num_HH_bucket_str','pct_HH_bucket':'pct_HH_bucket_str','cvg_ind_TOTAL_y':'num_HH_total'})
+        
+        
+        histdollmrg\
+                = pd.merge(HIST_DOLL,
+                     acttemp03,
+                     left_on = ['CAT','MKT_TIER_CALC_PRO'],
+                     right_on = ['cat','pro_mkt_tier_calc'],
+                     how = 'left')
+        
+        histdollmrg\
+                = pd.merge(histdollmrg,
+                     strtemp03,
+                     left_on = ['CAT','MKT_TIER_CALC_PRO'],
+                     right_on = ['cat','pro_mkt_tier_calc'],
+                     how = 'left')
+            
+        histdollmrg= pd.merge(histdollmrg,acttemp02,left_on = ['MKT_TIER_CALC_PRO'],right_on = ['pro_mkt_tier_calc'],how='left')    
+        histdollmrg=histdollmrg.fillna(0).drop(['TYPE','LOW100','HIGH100','CAT','pro_mkt_tier_calc_x','cat_x','low_cutoff_x','high_cutoff_x','num_HH_total_x',\
+        'pro_mkt_tier_calc_y','cat_y','low_cutoff_y','high_cutoff_y','num_HH_total_y','pro_mkt_tier_calc'], axis=1)
+        histdollmrg['Book']='NB_UNCAPPED'
+        histdollmrg['Coverage']='TOTAL'
+        
+        histdollmrg=histdollmrg.rename(columns={'LOW':'low_cutoff',\
+        'HIGH':'high_cutoff','cvg_ind_TOTAL':'num_HH_total'})
+                
+        histdoll=histdoll.append(histdollmrg[['Book','Coverage','MKT_TIER_CALC_PRO','low_cutoff','high_cutoff','pct_HH_bucket_act',\
+        'num_HH_bucket_act','pct_HH_bucket_str','num_HH_bucket_str','num_HH_total']])
         
     histdoll.to_csv(out_dir+'/HIST_MKT_DOLLAR'+cls_run.suffix_product+'.csv',index=False)

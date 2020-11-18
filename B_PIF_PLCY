@@ -2,8 +2,11 @@
 """
 Created on Fri Jun  5 08:07:58 2020
 
-@author: ANDREA.SHEN
+Last Updated on Thur Sep 10 2020
+
+@authors: ANDREA.SHEN, NICK.GAUGLER
 """
+# Standard library imports
 import pandas as pd
 
 ##########################################################
@@ -57,6 +60,7 @@ def pif_plcy_main(cls_run):
     df_pif_uncapped['Unwind_Impact'] = (df_pif_uncapped['Unwind_Total_Premium'] / df_pif_uncapped['OnLevel_Total_Premium']).fillna(1)-1
     df_pif_uncapped['Street_Impact'] = (df_pif_uncapped['Proposed_Aged_Total_Premium'] / df_pif_uncapped['Street_Total_Premium']).fillna(1)-1
     
+
     ## Create NB_UNCAPPED book ##              
     df_nb_uncapped = create_book_blends(COV_list, 'NB_UNCAPPED', NB_SUMS, 'tech_price', 'NB')              
     df_nb_uncapped['Actuarial_Impact'] = (df_nb_uncapped['Proposed_Total_Premium'] / df_nb_uncapped['OnLevel_Total_Premium']).fillna(1)-1

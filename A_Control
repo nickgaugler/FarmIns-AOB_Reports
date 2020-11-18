@@ -2,7 +2,9 @@
 """
 Created on Fri Jun 19 09:00:47 2020
 
-@author: ANDREA.SHEN
+Last Updated on Tue Nov 17 2020
+
+@authors: ANDREA.SHEN, NICK.GAUGLER
 """
 # Standard library imports
 import pandas as pd
@@ -26,8 +28,10 @@ class cls_Reports_Data:
         self.main_dir = self.parameters['main_dir']
         if self.parameters['suffix'] == '""':
             self.suffix_product = str()
+            self.nbnh_run_indicator = False
         else:
             self.suffix_product = self.parameters['suffix']
+            self.nbnh_run_indicator = True
         self.quotes_indicator = self.parameters['quotes_ind'] == 'True'
         
         self.cd_dir = self.main_dir+'/python/aob_tool_reports/code'        
@@ -54,4 +58,5 @@ if __name__ == '__main__':
     print("---Reports_Historgrams completed in {}s seconds ---".format(round(time() - phase_2_time,2)))
 
     
-    print("---Total Runtime: {}s seconds ---".format(round(time() - start_time,2))
+    print("---Total Runtime: {}s seconds ---".format(round(time() - start_time,2)))
+          

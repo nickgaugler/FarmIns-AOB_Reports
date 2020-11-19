@@ -509,7 +509,7 @@ def pif_veh_main(cls_run):
         
         return temp_db
     
-    def oboneway(lookup_db, fld_name, book_name, col_prem):
+    def oboneway(lookup_db, lookup_db2, fld_name, book_name, col_prem):
         temp_subfields = lookup_db.index.unique().tolist()
         index = pd.MultiIndex.from_product([cov_list_st2, temp_subfields], names=['Coverage', 'Level'])
         temp_db = pd.DataFrame(index = index, columns=['Book'])
@@ -520,6 +520,7 @@ def pif_veh_main(cls_run):
         for fld_item in temp_subfields:
             for cvg in cov_list_st2:
                 temp_db.at[(cvg, fld_item), 'Number_of_Veh'] = lookup_db.at[fld_item,'cvg_ind_{}'.format(cvg)]
+                temp_db.at[(cvg, fld_item), 'Veh_Exposure_Mix'] = lookup_db2.at['cvg_ind_{}'.format(cvg)] #Added
                 temp_db.at[(cvg, fld_item), 'Unwind_Total_Premium'] = lookup_db.at[fld_item,'unw_{}_{}'.format(col_prem, cvg)]
                 temp_db.at[(cvg, fld_item), 'OnLevel_Total_Premium'] = lookup_db.at[fld_item,'lev_{}_{}'.format(col_prem, cvg)]
                 temp_db.at[(cvg, fld_item), 'Street_Total_Premium'] = lookup_db.at[fld_item,'str_{}_{}'.format(col_prem, cvg)]
@@ -534,7 +535,7 @@ def pif_veh_main(cls_run):
         temp_db['Unwind_Impact'] = round((temp_db['Unwind_Total_Premium'] / temp_db['OnLevel_Total_Premium']).fillna(np.nan)-1,4)
         temp_db['Street_Impact'] = round((temp_db['Proposed_Aged_Total_Premium'] / temp_db['Street_Total_Premium']).fillna(np.nan)-1,4)
             
-        temp_db['Veh_Exposure_Mix'] = 0
+        # temp_db['Veh_Exposure_Mix'] = 0
         
         for fld_item in temp_subfields:
             for cvg in cov_list_st2:
@@ -573,7 +574,8 @@ def pif_veh_main(cls_run):
     for fld in looplist:
         lookup_db = temp00.groupby([fld])[winactcol+winstrcol+covindcol+capvehcol_pro_aged_prem2+capvehcol_str_prem2+\
                                           capvehcol_lev_prem2+capvehcol_unw_prem2+capvehcol_pro_prem2].sum()
-        OBONE=OBONE.append(oboneway(lookup_db, fld, 'PIF_CAPPED', 'cap_prem'))
+        lookup_db2 = lookup_db[covindcol].sum() #added
+        OBONE=OBONE.append(oboneway(lookup_db, lookup_db2, fld, 'PIF_CAPPED', 'cap_prem'))
                 
     ## PIF_UNCAPPED
     temp00=allmrg_temp01.copy()
@@ -583,7 +585,8 @@ def pif_veh_main(cls_run):
     for fld in looplist:
         lookup_db = temp00.groupby([fld])[winactcol+winstrcol+covindcol+uncapvehcol_pro_aged_prem2+uncapvehcol_str_prem2+\
                                           uncapvehcol_lev_prem2+uncapvehcol_unw_prem2+uncapvehcol_pro_prem2].sum()
-        OBONE=OBONE.append(oboneway(lookup_db, fld, 'PIF_UNCAPPED', 'uncap_prem'))
+        lookup_db2 = lookup_db[covindcol].sum() #added
+        OBONE=OBONE.append(oboneway(lookup_db, lookup_db2, 'PIF_UNCAPPED', 'uncap_prem'))
    
     ## NB_UNCAPPED
     if cls_run.nbnh_run_indicator:
@@ -594,7 +597,8 @@ def pif_veh_main(cls_run):
         for fld in looplist:
             lookup_db = temp00.groupby([fld])[winactcol+winstrcol+covindcol+uncapvehnbcol_str_prem2+\
                                               uncapvehnbcol_lev_prem2+uncapvehnbcol_unw_prem2+uncapvehnbcol_pro_prem2].sum()
-            OBONE=OBONE.append(oboneway(lookup_db, fld, 'NB_UNCAPPED', 'tech_price'))   
+            lookup_db2 = lookup_db[covindcol].sum() #added
+            OBONE=OBONE.append(oboneway(lookup_db, lookup_db2, 'NB_UNCAPPED', 'tech_price'))   
             
         OBONE.loc[OBONE.Book=='NB_UNCAPPED', ['Street_Impact','Street_Veh_Win_Rate','Street_Total_Premium','Street_Avg_Veh_Premium']] = np.nan
         

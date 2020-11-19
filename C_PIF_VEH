@@ -251,7 +251,7 @@ def pif_veh_main(cls_run):
     
     minmax=pd.DataFrame()
     minmax['Str_Min']=[minmaxstrout.iloc[0]['Street_Impact']]
-    minmax['Str_Max']=[minmaxstrout.iloc[1]['Street_Impact']]
+    minmax['Str_Max']=[minmaxstrout.iloc[-1]['Street_Impact']]
     ''' Uncomment this after testing '''
 #     minmax.to_csv(out_dir+'/MIN_MAX'+cls_run.suffix_product+'.csv',index=False)
 

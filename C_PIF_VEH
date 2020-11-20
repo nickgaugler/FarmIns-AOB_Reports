@@ -516,7 +516,7 @@ def pif_veh_main(cls_run):
         temp_db = pd.DataFrame(index = index, columns=['Book'])
         temp_db['Variable']=fld_name 
         temp_db['Book']=book_name  
-        temp00[fld_name] =temp00[fld_name].astype(str)
+        # temp00[fld_name] =temp00[fld_name].astype(str)
 
         for fld_item in temp_subfields:
             for cvg in cov_list_st2:
@@ -576,6 +576,7 @@ def pif_veh_main(cls_run):
     OBONE=pd.DataFrame()
 
     for fld in looplist:
+        temp00[fld] =temp00[fld].astype(str)
         lookup_db = temp00.groupby([fld])[winactcol+winstrcol+covindcol+capvehcol_pro_aged_prem2+capvehcol_str_prem2+\
                                           capvehcol_lev_prem2+capvehcol_unw_prem2+capvehcol_pro_prem2].sum()
         lookup_db2 = lookup_db[covindcol].sum() #added
@@ -587,6 +588,7 @@ def pif_veh_main(cls_run):
 
     ## aggregate
     for fld in looplist:
+        temp00[fld] =temp00[fld].astype(str)
         lookup_db = temp00.groupby([fld])[winactcol+winstrcol+covindcol+uncapvehcol_pro_aged_prem2+uncapvehcol_str_prem2+\
                                           uncapvehcol_lev_prem2+uncapvehcol_unw_prem2+uncapvehcol_pro_prem2].sum()
         lookup_db2 = lookup_db[covindcol].sum() #added
@@ -599,6 +601,7 @@ def pif_veh_main(cls_run):
         
         ## aggregate
         for fld in looplist:
+            temp00[fld] =temp00[fld].astype(str)
             lookup_db = temp00.groupby([fld])[winactcol+winstrcol+covindcol+uncapvehnbcol_str_prem2+\
                                               uncapvehnbcol_lev_prem2+uncapvehnbcol_unw_prem2+uncapvehnbcol_pro_prem2].sum()
             lookup_db2 = lookup_db[covindcol].sum() #added

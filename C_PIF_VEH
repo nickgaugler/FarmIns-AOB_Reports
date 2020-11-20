@@ -238,8 +238,8 @@ def pif_veh_main(cls_run):
         allmrg_temp01['{}TOTAL'.format(col_subset)] = allmrg_temp01['{}LIAB'.format(col_subset)] + allmrg_temp01['{}PHYSDAM'.format(col_subset)]
      
     ''' Uncomment this after testing '''
-#    allmrg_temp01.to_csv(temp_filepath,index=False)
-#    shutil.move(temp_filepath, out_dir+'/DATA_DUMP_VEH_PIF'+cls_run.suffix_product+'.csv')
+    allmrg_temp01.to_csv(temp_filepath,index=False)
+    shutil.move(temp_filepath, out_dir+'/DATA_DUMP_VEH_PIF'+cls_run.suffix_product+'.csv')
     
     # min max Street number at policy number level
     minmaxtemp00 = allmrg_temp01.groupby(['PLCY_CNTRCT_NUM'])[['pro_cap_prem_aged_TOTAL','str_cap_prem_TOTAL']].sum()
@@ -247,13 +247,13 @@ def pif_veh_main(cls_run):
     minmaxstrout=minmaxtemp00[minmaxtemp00['Street_Impact'] == minmaxtemp00['Street_Impact'].min()]
     minmaxstrout=minmaxstrout.append(minmaxtemp00[minmaxtemp00['Street_Impact'] == minmaxtemp00['Street_Impact'].max()]).reset_index() 
     ''' Uncomment this after testing '''                 
-#    minmaxstrout.to_csv(out_dir+'/MIN_MAX_PLCY'+cls_run.suffix_product+'.csv',index=False)
+    minmaxstrout.to_csv(out_dir+'/MIN_MAX_PLCY'+cls_run.suffix_product+'.csv',index=False)
     
     minmax=pd.DataFrame()
     minmax['Str_Min']=[minmaxstrout.iloc[0]['Street_Impact']]
     minmax['Str_Max']=[minmaxstrout.iloc[-1]['Street_Impact']]
     ''' Uncomment this after testing '''
-#     minmax.to_csv(out_dir+'/MIN_MAX'+cls_run.suffix_product+'.csv',index=False)
+    minmax.to_csv(out_dir+'/MIN_MAX'+cls_run.suffix_product+'.csv',index=False)
 
     #################################################
     ############  PIF_VEH_03 - HH Summary ###########

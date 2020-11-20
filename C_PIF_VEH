@@ -586,7 +586,7 @@ def pif_veh_main(cls_run):
         lookup_db = temp00.groupby([fld])[winactcol+winstrcol+covindcol+uncapvehcol_pro_aged_prem2+uncapvehcol_str_prem2+\
                                           uncapvehcol_lev_prem2+uncapvehcol_unw_prem2+uncapvehcol_pro_prem2].sum()
         lookup_db2 = lookup_db[covindcol].sum() #added
-        OBONE=OBONE.append(oboneway(lookup_db, lookup_db2, 'PIF_UNCAPPED', 'uncap_prem'))
+        OBONE=OBONE.append(oboneway(lookup_db, lookup_db2, fld, 'PIF_UNCAPPED', 'uncap_prem'))
    
     ## NB_UNCAPPED
     if cls_run.nbnh_run_indicator:
@@ -598,7 +598,7 @@ def pif_veh_main(cls_run):
             lookup_db = temp00.groupby([fld])[winactcol+winstrcol+covindcol+uncapvehnbcol_str_prem2+\
                                               uncapvehnbcol_lev_prem2+uncapvehnbcol_unw_prem2+uncapvehnbcol_pro_prem2].sum()
             lookup_db2 = lookup_db[covindcol].sum() #added
-            OBONE=OBONE.append(oboneway(lookup_db, lookup_db2, 'NB_UNCAPPED', 'tech_price'))   
+            OBONE=OBONE.append(oboneway(lookup_db, lookup_db2, fld, 'NB_UNCAPPED', 'tech_price'))   
             
         OBONE.loc[OBONE.Book=='NB_UNCAPPED', ['Street_Impact','Street_Veh_Win_Rate','Street_Total_Premium','Street_Avg_Veh_Premium']] = np.nan
         

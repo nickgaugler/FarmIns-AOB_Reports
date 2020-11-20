@@ -81,7 +81,7 @@ def pif_veh_main(cls_run):
     FLD_KP=pd.read_csv(ref_dir + "/FIELDS_KP.csv")
     COV=pd.read_csv(ref_dir + "/COV.csv")
     COV_list = [row for row in COV['COV']]
-    OB_ONEWAY_FLD=pd.read_csv(ref_dir + "/OB_ONEWAY_FIELDS.csv")
+    # move down this line of code OB_ONEWAY_FLD=pd.read_csv(ref_dir + "/OB_ONEWAY_FIELDS.csv")
     
     # PLCY DATA
     PIF_DATA_PLCY = pd.read_csv(datapif_dir + '/PIF_plcy'+cls_run.suffix_product+'.csv', usecols = list(FLD_KP.loc[FLD_KP['TABLE']=='PIF_DATA_PLCY','FIELD']))
@@ -320,7 +320,10 @@ def pif_veh_main(cls_run):
         NB_UNCAP_HH['Book']='NB_UNCAPPED'
         NB_UNCAP_HH2 = calc_win_rates(NB_UNCAP_HH,'NB_UNCAPPED','tech_price')
         NB_UNCAP_HH2.drop(['Street_HH_Win_Rate','Street_Avg_HH_Premium'], axis=1, inplace=True)
-            
+         
+    else:
+        NB_UNCAP_HH=pd.DataFrame()
+           
     ###############################################
     ###############  PIF_VEH_04 - OB ##############
     
@@ -445,8 +448,6 @@ def pif_veh_main(cls_run):
     ############  PIF_VEH_05 - OB 1 Way ###########
     ###############################################
     
-    looplist=OB_ONEWAY_FLD.FIELD
-    
     allmrg_temp01.loc[(allmrg_temp01['pro_homeowner_ind']=='Y')&(allmrg_temp01['pro_disc_auto_home']=='Y'), 'Homeowner']='Homeowner (Farmers Home)'
     allmrg_temp01.loc[(allmrg_temp01['pro_homeowner_ind']=='Y')&(allmrg_temp01['pro_disc_auto_home']=='N'), 'Homeowner']='Homeowner (no Farmers Home)'
     allmrg_temp01.loc[(allmrg_temp01['pro_homeowner_ind']=='N')&(allmrg_temp01['pro_disc_auto_home']=='Y'), 'Homeowner']='Not a Homeowner (Farmers Home)'
@@ -563,6 +564,9 @@ def pif_veh_main(cls_run):
                        'OnLevel_Total_Premium','Proposed_Total_Premium','Street_Avg_Veh_Premium','OnLevel_Avg_Veh_Premium','Proposed_Avg_Veh_Premium']]
 
         return temp_db
+    
+    OB_ONEWAY_FLD=pd.read_csv(ref_dir + "/OB_ONEWAY_FIELDS.csv")
+    looplist=OB_ONEWAY_FLD.FIELD
     
     ## PIF_CAPPED
     temp00=allmrg_temp01.copy()

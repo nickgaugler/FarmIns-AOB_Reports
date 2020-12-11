@@ -27,8 +27,7 @@ def pif_hist_main(cls_run, PIF_CAP_HH, PIF_UNCAP_HH, NB_UNCAP_HH):
     ref_dir = cls_run.main_dir+'/python/aob_tool_reports/ref_tbl'
     out_dir = cls_run.main_dir+'/reports_inputs'
     
-    HIST=pd.read_csv(ref_dir + "/HIST_RNG.csv")
-    HIST_PERC = HIST[(HIST.TYPE=='HIST_PERCENT')]
+
         
     #################
     ##### Market#####

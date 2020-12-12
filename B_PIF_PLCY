@@ -80,19 +80,19 @@ def pif_plcy_main(cls_run):
         Quotes_PROPOSED_PLCY = pd.read_csv(rsltQuotes_dir + '/'+cls_run.state_abbr+'_Quotes_Proposed_plcy'+cls_run.suffix_product+'.csv')
         Quotes_SUMS = (Quotes_ONLVL_PLCY.sum(axis=0, numeric_only=True), Quotes_PROPOSED_PLCY.sum(axis=0, numeric_only=True), Quotes_STREET_PLCY.sum(axis=0, numeric_only=True))
         Bound_ONLVL_PLCY = pd.merge(Quotes_DATA_PLCY, Quotes_ONLVL_PLCY,
-                 left_on = ['SRC_HH_NUM','QUOTE_ID'], right_on = ['str_src_hh_num','str_quote_id'], how = 'inner')
+                 left_on = ['SRC_HH_NUM','QUOTE_ID'], right_on = ['src_hh_num','quote_id'], how = 'inner')
         Bound_Street_PLCY = pd.merge(Quotes_DATA_PLCY, Quotes_STREET_PLCY,
-                 left_on = ['SRC_HH_NUM','QUOTE_ID'], right_on = ['str_src_hh_num','str_quote_id'], how = 'inner')
+                 left_on = ['SRC_HH_NUM','QUOTE_ID'], right_on = ['src_hh_num','quote_id'], how = 'inner')
         Bound_Proposed_PLCY = pd.merge(Quotes_DATA_PLCY, Quotes_PROPOSED_PLCY,
-                 left_on = ['SRC_HH_NUM','QUOTE_ID'], right_on = ['str_src_hh_num','str_quote_id'], how = 'inner')
+                 left_on = ['SRC_HH_NUM','QUOTE_ID'], right_on = ['src_hh_num','quote_id'], how = 'inner')
         Bound_SUMS = (Bound_ONLVL_PLCY.loc[Bound_ONLVL_PLCY['BOUND_IND'] == 'Y'].sum(axis=0, numeric_only=True), \
-                      Bound_Street_PLCY.loc[Bound_Street_PLCY['BOUND_IND'] == 'Y'].sum(axis=0, numeric_only=True), \
-                      Bound_Proposed_PLCY.loc[Bound_Proposed_PLCY['BOUND_IND'] == 'Y'].sum(axis=0, numeric_only=True))
+                      Bound_Proposed_PLCY.loc[Bound_Proposed_PLCY['BOUND_IND'] == 'Y'].sum(axis=0, numeric_only=True), \
+                      Bound_Street_PLCY.loc[Bound_Street_PLCY['BOUND_IND'] == 'Y'].sum(axis=0, numeric_only=True))
         ## Create All_Quotes book ##
-        df_all_quotes = create_book_blends(COV_list, 'BOUND_QUOTES', Quotes_SUMS, 'tech_price', 'QUOTES')   
+        df_all_quotes = create_book_blends(COV_list, 'ALL_QUOTES', Quotes_SUMS, 'tech_price', 'QUOTES')   
         df_all_quotes['Actuarial_Impact'] = (df_all_quotes['Proposed_Total_Premium'] / df_all_quotes['OnLevel_Total_Premium']).fillna(1)-1
         ## Create Bound_Quotes book ##            
-        df_bound_quotes = create_book_blends(COV_list, 'ALL_QUOTES', Bound_SUMS, 'tech_price', 'QUOTES')
+        df_bound_quotes = create_book_blends(COV_list, 'BOUND_QUOTES', Bound_SUMS, 'tech_price', 'QUOTES')
         df_bound_quotes['Actuarial_Impact'] = (df_bound_quotes['Proposed_Total_Premium'] / df_bound_quotes['OnLevel_Total_Premium']).fillna(1)-1
         ## Add Quotes books to OB_Blend ##
         df_OB_Blend = df_OB_Blend.append(df_all_quotes).fillna('')
